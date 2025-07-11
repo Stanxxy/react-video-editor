@@ -14,6 +14,7 @@ interface DroppableProps extends React.HTMLAttributes<HTMLDivElement> {
   multiple?: boolean;
   disabled?: boolean;
   children?: React.ReactNode;
+  noClick?: boolean;
 }
 
 export function Droppable(props: DroppableProps) {
@@ -26,6 +27,7 @@ export function Droppable(props: DroppableProps) {
     maxFileCount = 1,
     multiple = false,
     disabled = false,
+    noClick = false,
     className,
     children,
     ...dropzoneProps
@@ -52,7 +54,7 @@ export function Droppable(props: DroppableProps) {
       maxFiles={maxFileCount}
       multiple={maxFileCount > 1 || multiple}
       disabled={disabled}
-      noClick
+      noClick={noClick}
     >
       {({ getRootProps, getInputProps, isDragActive }) => (
         <div

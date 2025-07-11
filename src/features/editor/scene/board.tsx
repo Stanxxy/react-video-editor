@@ -10,6 +10,11 @@ const SceneBoard = ({
 }) => {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
+  // Don't render if size is invalid
+  if (!size?.width || !size?.height) {
+    return <div className="w-full h-full bg-sidebar" />;
+  }
+
   return (
     <DroppableArea
       id="artboard"

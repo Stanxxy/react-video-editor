@@ -13,21 +13,44 @@ function useZoom(
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container || !size?.width || !size?.height) return;
 
     const PADDING = 96;
     const containerHeight = container.clientHeight - PADDING;
     const containerWidth = container.clientWidth - PADDING;
     const { width, height } = size;
 
-    viewerRef.current?.infiniteViewer.scrollCenter();
+    // Ensure valid dimensions before calculating zoom
+    if (containerWidth <= 0 || containerHeight <= 0 || width <= 0 || height <= 0) {
+      return;
+    }
+
     const desiredZoom = Math.min(
       containerWidth / width,
       containerHeight / height,
     );
-    currentZoomRef.current = desiredZoom;
-    setZoom(desiredZoom);
-  }, [size, containerRef]);
+    
+    console.log("🔍 Zoom recalculated:", {
+      size,
+      containerWidth,
+      containerHeight,
+      desiredZoom,
+      validDimensions: containerWidth > 0 && containerHeight > 0 && width > 0 && height > 0
+    });
+
+    // Only update zoom if we have valid dimensions
+    if (desiredZoom > 0 && isFinite(desiredZoom)) {
+      currentZoomRef.current = desiredZoom;
+      setZoom(desiredZoom);
+    } else {
+      console.warn("⚠️ Invalid zoom calculated, keeping current zoom");
+    }
+    
+    // Center the viewer after zoom change
+    setTimeout(() => {
+      viewerRef.current?.infiniteViewer.scrollCenter();
+    }, 100);
+  }, [size, containerRef, viewerRef]);
 
   const handlePinch = useCallback((e: OnPinch) => {
     const deltaY = (e as any).inputEvent.deltaY;

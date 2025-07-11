@@ -34,12 +34,16 @@ interface ITimelineStore {
   sceneMoveableRef: React.RefObject<Moveable> | null;
   setSceneMoveableRef: (ref: React.RefObject<Moveable>) => void;
   setState: (state: any) => Promise<void>;
+  
+  // Add orientation management
+  orientation: 'horizontal' | 'vertical';
+  setOrientation: (orientation: 'horizontal' | 'vertical') => void;
 }
 
 const useStore = create<ITimelineStore>((set) => ({
   size: {
-    width: 1080,
-    height: 1920,
+    width: 1920,
+    height: 1080,
   },
 
   timeline: null,
@@ -66,6 +70,7 @@ const useStore = create<ITimelineStore>((set) => ({
   transitionsMap: {},
   trackItemsMap: {},
   sceneMoveableRef: null,
+  orientation: 'horizontal',
 
   setTimeline: (timeline: Timeline) =>
     set(() => ({
@@ -85,6 +90,8 @@ const useStore = create<ITimelineStore>((set) => ({
   setPlayerRef: (playerRef: React.RefObject<PlayerRef> | null) =>
     set({ playerRef }),
   setSceneMoveableRef: (ref) => set({ sceneMoveableRef: ref }),
+  setOrientation: (orientation: 'horizontal' | 'vertical') =>
+    set({ orientation }),
 }));
 
 export default useStore;

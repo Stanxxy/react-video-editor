@@ -99,9 +99,14 @@ const Ruler = (props: RulerProps) => {
     const unit = scale.unit;
     const segments = scale.segments;
     context.clearRect(0, 0, width, height);
+    
+    // Add subtle background for better contrast
+    context.fillStyle = "#1a1a1a";
+    context.fillRect(0, 0, width, height);
+    
     context.save();
-    context.strokeStyle = "#71717a";
-    context.fillStyle = "#71717a";
+    context.strokeStyle = "#a1a1aa";
+    context.fillStyle = "#e4e4e7";
     context.lineWidth = 1;
     context.font = `${SMALL_FONT_SIZE}px ${SECONDARY_FONT}`;
     context.textBaseline = "top";
@@ -152,9 +157,9 @@ const Ruler = (props: RulerProps) => {
 
         // Set color based on line size
         if (lineSize === shortLineSize) {
-          context.strokeStyle = "#52525b"; // Yellow for short lines
+          context.strokeStyle = "#71717a"; // Subtle gray for short lines
         } else {
-          context.strokeStyle = "#18181b"; // Red for long lines
+          context.strokeStyle = "#d4d4d8"; // Brighter gray for long lines
         }
 
         const origin = 18; // Increase the origin to start lines lower, below the text
@@ -194,7 +199,7 @@ const Ruler = (props: RulerProps) => {
 
   return (
     <div
-      className="border-t border-border"
+      className="border-t border-border/50 bg-sidebar"
       style={{
         position: "relative",
         width: "100%",
@@ -205,6 +210,7 @@ const Ruler = (props: RulerProps) => {
         onMouseUp={handleClick}
         ref={canvasRef}
         height={canvasSize.height}
+        className="cursor-pointer"
       />
     </div>
   );

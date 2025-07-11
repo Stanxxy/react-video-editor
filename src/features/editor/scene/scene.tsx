@@ -17,6 +17,8 @@ export default function Scene({
   const containerRef = useRef<HTMLDivElement>(null);
   const { size, trackItemIds } = useStore();
   const { zoom, handlePinch } = useZoom(containerRef, viewerRef, size);
+  
+  console.log("🎬 Scene rendering with size:", size, "zoom:", zoom);
 
   return (
     <div

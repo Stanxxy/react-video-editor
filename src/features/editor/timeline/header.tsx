@@ -6,7 +6,7 @@ import {
   LAYER_DELETE,
   TIMELINE_SCALE_CHANGED,
 } from "@designcombo/state";
-import { PLAYER_PAUSE, PLAYER_PLAY } from "../constants/events";
+import { PLAYER_PAUSE, PLAYER_PLAY, PLAYER_SEEK } from "../constants/events";
 import { frameToTimeString, getCurrentTime, timeToString } from "../utils/time";
 import useStore from "../store/use-store";
 import { SquareSplitHorizontal, Trash, ZoomIn, ZoomOut } from "lucide-react";
@@ -100,6 +100,30 @@ const Header = () => {
     });
   };
 
+  const handleSkipBackward = () => {
+    const currentTime = (currentFrame / fps) * 1000; // Current time in milliseconds
+    const skipAmount = 5000; // 5 seconds in milliseconds
+    const newTime = Math.max(0, currentTime - skipAmount); // Don't go below 0
+    
+    dispatch(PLAYER_SEEK, {
+      payload: {
+        time: newTime,
+      },
+    });
+  };
+
+  const handleSkipForward = () => {
+    const currentTime = (currentFrame / fps) * 1000; // Current time in milliseconds
+    const skipAmount = 5000; // 5 seconds in milliseconds
+    const newTime = Math.min(duration, currentTime + skipAmount); // Don't go beyond duration
+    
+    dispatch(PLAYER_SEEK, {
+      payload: {
+        time: newTime,
+      },
+    });
+  };
+
   const changeScale = (scale: ITimelineScaleState) => {
     dispatch(TIMELINE_SCALE_CHANGED, {
       payload: {
@@ -117,19 +141,25 @@ const Header = () => {
   };
 
   useEffect(() => {
-    playerRef?.current?.addEventListener("play", () => {
+    const handlePlayEvent = () => {
       setPlaying(true);
-    });
-    playerRef?.current?.addEventListener("pause", () => {
+    };
+    
+    const handlePauseEvent = () => {
       setPlaying(false);
-    });
+    };
+
+    const player = playerRef?.current;
+    if (player) {
+      player.addEventListener("play", handlePlayEvent);
+      player.addEventListener("pause", handlePauseEvent);
+    }
+
     return () => {
-      playerRef?.current?.removeEventListener("play", () => {
-        setPlaying(true);
-      });
-      playerRef?.current?.removeEventListener("pause", () => {
-        setPlaying(false);
-      });
+      if (player) {
+        player.removeEventListener("play", handlePlayEvent);
+        player.removeEventListener("pause", handlePauseEvent);
+      }
     };
   }, [playerRef]);
 
@@ -159,13 +189,13 @@ const Header = () => {
             alignItems: "center",
           }}
         >
-          <div className="flex px-2">
+          <div className="flex items-center gap-1 px-2">
             <Button
               disabled={!activeIds.length}
               onClick={doActiveDelete}
               variant={"ghost"}
               size={"sm"}
-              className="flex items-center gap-1 px-2"
+              className="flex items-center gap-1 px-2 text-red-400 hover:text-red-300 hover:bg-red-950/20"
             >
               <Trash size={14} /> Delete
             </Button>
@@ -175,9 +205,9 @@ const Header = () => {
               onClick={doActiveSplit}
               variant={"ghost"}
               size={"sm"}
-              className="flex items-center gap-1 px-2"
+              className="flex items-center gap-1 px-2 text-blue-400 hover:text-blue-300 hover:bg-blue-950/20 border border-blue-500/30"
             >
-              <SquareSplitHorizontal size={15} /> Split
+              <SquareSplitHorizontal size={15} /> Split Video
             </Button>
             <Button
               disabled={!activeIds.length}
@@ -186,14 +216,14 @@ const Header = () => {
               }}
               variant={"ghost"}
               size={"sm"}
-              className="flex items-center gap-1 px-2"
+              className="flex items-center gap-1 px-2 text-green-400 hover:text-green-300 hover:bg-green-950/20"
             >
               <SquareSplitHorizontal size={15} /> Clone
             </Button>
           </div>
           <div className="flex items-center justify-center">
             <div>
-              <Button onClick={doActiveDelete} variant={"ghost"} size={"icon"}>
+              <Button onClick={handleSkipBackward} variant={"ghost"} size={"icon"}>
                 <IconPlayerSkipBack size={14} />
               </Button>
               <Button
@@ -212,7 +242,7 @@ const Header = () => {
                   <IconPlayerPlayFilled size={14} />
                 )}
               </Button>
-              <Button onClick={doActiveSplit} variant={"ghost"} size={"icon"}>
+              <Button onClick={handleSkipForward} variant={"ghost"} size={"icon"}>
                 <IconPlayerSkipForward size={14} />
               </Button>
             </div>

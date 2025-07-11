@@ -262,7 +262,35 @@ export function SceneInteractions({
         });
       }}
       onRotate={({ target, transform }) => {
-        target.style.transform = transform;
+        // Extract rotation angle from transform string
+        const rotateMatch = transform.match(/rotate\(([^)]+)\)/);
+        if (rotateMatch) {
+          const angle = parseFloat(rotateMatch[1]);
+          const snapTolerance = 15; // Degrees tolerance for snapping
+          const snapIntervals = [0, 90, 180, 270, 360, -90, -180, -270];
+          
+          // Find the closest snap interval
+          let snappedAngle = angle;
+          for (const snapAngle of snapIntervals) {
+            if (Math.abs(angle - snapAngle) <= snapTolerance) {
+              snappedAngle = snapAngle;
+              break;
+            }
+          }
+          
+          // Apply snapped transform if different from original
+          if (snappedAngle !== angle) {
+            const snappedTransform = transform.replace(
+              /rotate\([^)]+\)/, 
+              `rotate(${snappedAngle}deg)`
+            );
+            target.style.transform = snappedTransform;
+          } else {
+            target.style.transform = transform;
+          }
+        } else {
+          target.style.transform = transform;
+        }
       }}
       onRotateEnd={({ target }) => {
         if (!target.style.transform) return;

@@ -93,12 +93,19 @@ const Playhead = ({ scrollLeft }: { scrollLeft: number }) => {
       <div
         style={{
           borderRadius: "0 0 4px 4px",
+          background: "linear-gradient(to bottom, #3b82f6, #1d4ed8)",
+          boxShadow: "0 2px 4px rgba(0, 0, 0, 0.3)",
         }}
-        className="absolute top-0 h-4 w-2 -translate-x-1/2 transform bg-white text-xs font-semibold text-zinc-800"
+        className="absolute top-0 h-4 w-3 -translate-x-1/2 transform text-xs font-semibold text-white"
       ></div>
       <div className="relative h-full">
-        <div className="absolute top-0 h-full w-3 -translate-x-1/2 transform"></div>
-        <div className="absolute top-0 h-full w-0.5 -translate-x-1/2 transform bg-white/50"></div>
+        <div className="absolute top-0 h-full w-4 -translate-x-1/2 transform cursor-pointer"></div>
+        <div 
+          className="absolute top-0 h-full w-0.5 -translate-x-1/2 transform bg-blue-500 shadow-lg"
+          style={{
+            boxShadow: "0 0 8px rgba(59, 130, 246, 0.5)",
+          }}
+        ></div>
       </div>
     </div>
   );

@@ -20,6 +20,7 @@ import {
 } from "../constants/constants";
 import { ITrackItem } from "@designcombo/types";
 import PreviewTrackItem from "./items/preview-drag-item";
+import { EDIT_OBJECT } from "@designcombo/state";
 
 CanvasTimeline.registerItems({
   Text,
@@ -43,7 +44,7 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
   const canvasRef = useRef<CanvasTimeline | null>(null);
   const verticalScrollbarVpRef = useRef<HTMLDivElement>(null);
   const horizontalScrollbarVpRef = useRef<HTMLDivElement>(null);
-  const { scale, playerRef, fps, duration, setState, timeline } = useStore();
+  const { scale, playerRef, fps, duration, setState, timeline, trackItemsMap } = useStore();
   const currentFrame = useCurrentPlayerFrame(playerRef!);
   const [canvasSize, setCanvasSize] = useState(EMPTY_SIZE);
   const [size, setSize] = useState<{ width: number; height: number }>(
@@ -125,22 +126,16 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
         right: TIMELINE_OFFSET_CANVAS_RIGHT,
       },
       sizesMap: {
+        main: 60, // Increased height for main video track
+        audio: 36,
         caption: 32,
         text: 32,
-        audio: 36,
-        customTrack: 40,
-        customTrack2: 40,
       },
       acceptsMap: {
-        text: ["text", "caption"],
-        image: ["image", "video"],
-        video: ["video", "image"],
+        main: ["video"], // Only accept videos on main track
         audio: ["audio"],
         caption: ["caption", "text"],
-        template: ["template"],
-        customTrack: ["video", "image"],
-        customTrack2: ["video", "image"],
-        main: ["video", "image"],
+        text: ["text", "caption"],
       },
       guideLineColor: "#ffffff",
     });
@@ -250,6 +245,67 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     };
   }, []);
 
+  // Add synchronization effect for trim/display properties after state changes
+  useEffect(() => {
+    let hasChanges = false;
+    
+    // Check for any video items that have mismatched trim and display properties
+    Object.values(trackItemsMap).forEach((item: ITrackItem) => {
+      if (item.type === 'video' && item.trim && item.display) {
+        const displayDuration = item.display.to - item.display.from;
+        const trimDuration = item.trim.to - item.trim.from;
+        
+        // If display shows more duration than trim allows, synchronize them
+        if (Math.abs(displayDuration - trimDuration) > 100) { // 100ms tolerance
+          console.log("🔄 Synchronizing trim/display mismatch for video:", item.id);
+          console.log("Display range:", item.display.from, "to", item.display.to, "duration:", displayDuration);
+          console.log("Trim range:", item.trim.from, "to", item.trim.to, "duration:", trimDuration);
+          
+          hasChanges = true;
+          
+          // Update trim to match display for restored clips
+          dispatch(EDIT_OBJECT, {
+            payload: {
+              [item.id]: {
+                trim: {
+                  from: 0, // Reset to start of original video
+                  to: displayDuration, // Match the display duration
+                },
+              },
+            },
+          });
+        }
+      }
+    });
+
+    // Recalculate timeline duration to include all track items
+    const maxEndTime = Math.max(
+      duration, // Keep current duration as minimum
+      ...Object.values(trackItemsMap).map((item: ITrackItem) => item.display?.to || 0),
+      1000 // Minimum 1 second
+    );
+
+    // Update duration if it's insufficient for the track items
+    if (maxEndTime > duration) {
+      console.log("📏 Updating timeline duration from", duration, "to", maxEndTime);
+      setTimeout(() => {
+        setState({ duration: maxEndTime });
+      }, 50); // Small delay to avoid conflicts with other state updates
+    }
+
+    // Force thumbnail regeneration for restored clips
+    if (hasChanges) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        console.log("🎬 Forcing thumbnail regeneration after restoration");
+        setTimeout(() => {
+          canvas.onScrollChange();
+          canvas.requestRenderAll();
+        }, 150); // Slightly longer delay to ensure all state updates are complete
+      }
+    }
+  }, [trackItemsMap, duration, setState]);
+
   const handleReplaceItem = (trackItem: Partial<ITrackItem>) => {
     dispatch(REPLACE_MEDIA, {
       payload: {
@@ -283,13 +339,17 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     <div
       ref={timelineContainerRef}
       id={"timeline-container"}
-      className="relative h-full w-full overflow-hidden bg-sidebar"
+      className="relative h-full w-full overflow-hidden bg-sidebar border-t border-border/50"
     >
       <Header />
       <Ruler onClick={onClickRuler} scrollLeft={scrollLeft} />
       <Playhead scrollLeft={scrollLeft} />
       <div className="flex">
-        <div className="relative w-10 flex-none"></div>
+        <div className="relative w-10 flex-none bg-sidebar border-r border-border/30">
+          <div className="absolute top-2 left-2 text-xs text-muted-foreground/70 font-medium">
+            VIDEO
+          </div>
+        </div>
         <div style={{ height: canvasSize.height }} className="relative flex-1">
           <div
             style={{ height: canvasSize.height }}

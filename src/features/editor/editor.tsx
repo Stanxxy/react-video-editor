@@ -14,27 +14,38 @@ import {
 import { ImperativePanelHandle } from "react-resizable-panels";
 import { getCompactFontData, loadFonts } from "./utils/fonts";
 import { SECONDARY_FONT, SECONDARY_FONT_URL } from "./constants/constants";
-import MenuList from "./menu-list";
-import { MenuItem } from "./menu-item";
 import { ControlItem } from "./control-item";
 import CropModal from "./crop-modal/crop-modal";
 import useDataState from "./store/use-data-state";
 import { FONTS } from "./data/fonts";
 import FloatingControl from "./control-item/floating-controls/floating-control";
 
+// Initialize with horizontal orientation (YouTube format) by default
 const stateManager = new StateManager({
   size: {
-    width: 1080,
-    height: 1920,
+    width: 1920,
+    height: 1080,
   },
 });
 
 const Editor = () => {
   const [projectName, setProjectName] = useState<string>("Untitled video");
   const timelinePanelRef = useRef<ImperativePanelHandle>(null);
-  const { timeline, playerRef } = useStore();
+  const { timeline, playerRef, setState, orientation, size } = useStore();
 
   useTimelineEvents();
+
+  // Sync stateManager size changes to store
+  useEffect(() => {
+    const sizeSubscription = stateManager.subscribeToSize((newState) => {
+      console.log("🔄 StateManager size changed:", newState.size);
+      setState(newState);
+    });
+
+    return () => {
+      sizeSubscription.unsubscribe();
+    };
+  }, [setState]);
 
   const { setCompactFonts, setFonts } = useDataState();
 
@@ -93,10 +104,6 @@ const Editor = () => {
           <ResizablePanel className="relative" defaultSize={70}>
             <FloatingControl />
             <div className="flex h-full flex-1">
-              <div className="bg-sidebar flex flex-none border-r border-border/80">
-                <MenuList />
-                <MenuItem />
-              </div>
               <div
                 style={{
                   width: "100%",
@@ -107,7 +114,9 @@ const Editor = () => {
                 }}
               >
                 <CropModal />
-                <Scene stateManager={stateManager} />
+                <Scene 
+                  stateManager={stateManager} 
+                />
               </div>
             </div>
           </ResizablePanel>
@@ -121,7 +130,7 @@ const Editor = () => {
             {playerRef && <Timeline stateManager={stateManager} />}
           </ResizablePanel>
         </ResizablePanelGroup>
-        <ControlItem />
+        <ControlItem stateManager={stateManager} />
       </div>
     </div>
   );
