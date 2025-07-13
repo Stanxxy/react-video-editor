@@ -289,7 +289,7 @@ export function SceneInteractions({
             target.style.transform = transform;
           }
         } else {
-          target.style.transform = transform;
+        target.style.transform = transform;
         }
       }}
       onRotateEnd={({ target }) => {

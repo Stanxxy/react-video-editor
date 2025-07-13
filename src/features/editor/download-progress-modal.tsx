@@ -19,8 +19,8 @@ const DownloadProgressModal = () => {
         actions.setDisplayProgressModal(false);
       } else {
         // For MP4 exports, download the video
-        await download(output.url, "untitled.mp4");
-        console.log("downloading");
+      await download(output.url, "untitled.mp4");
+      console.log("downloading");
       }
     }
   };
@@ -47,7 +47,7 @@ const DownloadProgressModal = () => {
                 {isJsonExport ? (
                   <FileText className="h-12 w-12 text-green-500" />
                 ) : (
-                  <CircleCheckIcon />
+                <CircleCheckIcon />
                 )}
               </div>
               <div className="font-bold">
@@ -94,8 +94,8 @@ const DownloadProgressModal = () => {
                 </>
               ) : (
                 <>
-                  <div>Closing the browser will not cancel the export.</div>
-                  <div>The video will be saved in your space.</div>
+              <div>Closing the browser will not cancel the export.</div>
+              <div>The video will be saved in your space.</div>
                 </>
               )}
             </div>

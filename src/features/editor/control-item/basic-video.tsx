@@ -180,6 +180,31 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
     localStorage.setItem('combat-annotations', JSON.stringify(updatedAnnotations));
   };
 
+  const handleCleanAnnotation = () => {
+    // Remove annotation from the associated clip if any
+    if (annotation.id) {
+      const updatedAnnotations = savedAnnotations.filter(a => a.id !== annotation.id);
+      setSavedAnnotations(updatedAnnotations);
+      localStorage.setItem('combat-annotations', JSON.stringify(updatedAnnotations));
+    }
+    
+    // Reset all input box values
+    setAnnotation({
+      id: '',
+      clipId: clipId,
+      event: '',
+      technique: '',
+      player1: '',
+      player2: '',
+      result1: '',
+      result2: '',
+      notes: '',
+      startTime: clipStartTime,
+      endTime: clipEndTime,
+      createdAt: new Date()
+    });
+  };
+
   const handleJumpToAnnotation = (annotation: AnnotationData) => {
     // Find the track item that corresponds to this annotation's clip ID
     const matchingTrackItem = Object.values(trackItemsMap).find(item => 
@@ -191,7 +216,7 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
       stateManager.updateState(
         {
           activeIds: [matchingTrackItem.id],
-        },
+          },
         {
           updateHistory: false,
           kind: "layer:selection",
@@ -245,6 +270,68 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
       setIsAnalyzing(false);
     }
   };
+
+  // Keyboard shortcuts for annotation controls
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true';
+      const isCtrlOrCmd = event.ctrlKey || event.metaKey;
+      
+      // Handle 'Escape' to blur current input - this should work even when inside input
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        // Blur any focused input element
+        const activeElement = document.activeElement as HTMLElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.contentEditable === 'true')) {
+          activeElement.blur();
+        }
+        return; // Exit early after handling escape
+      }
+      
+      // Don't trigger other shortcuts when typing in inputs, textareas, or contenteditable elements
+      if (isInputFocused) {
+        return;
+      }
+      
+      // Handle Ctrl/Cmd+Enter for AI analysis
+      if (isCtrlOrCmd && event.key === 'Enter') {
+        event.preventDefault();
+        if (selectedClip && !isAnalyzing) {
+          handleAIAnalysis();
+        }
+      }
+      
+      // Handle Shift+Enter for Save Annotation
+      if (event.shiftKey && event.key === 'Enter') {
+        event.preventDefault();
+        if (annotation.event && annotation.technique && selectedClip) {
+          handleSaveAnnotation();
+        }
+      }
+      
+      // Handle '/' to focus Event Type select
+      if (event.key === '/') {
+        event.preventDefault();
+        const eventTypeSelect = document.querySelector('[data-testid="event-type-select"]') as HTMLElement;
+        if (eventTypeSelect) {
+          eventTypeSelect.focus();
+        }
+      }
+      
+      // Handle Ctrl/Cmd+Backspace for Clean Annotation
+      if (isCtrlOrCmd && event.key === 'Backspace') {
+        event.preventDefault();
+        handleCleanAnnotation();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedClip, isAnalyzing, annotation.event, annotation.technique, handleAIAnalysis, handleSaveAnnotation, handleCleanAnnotation]);
 
   const formatTime = (timeMs: number) => {
     const totalSeconds = Math.floor(timeMs / 1000);
@@ -404,6 +491,7 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
               variant="outline"
               size="sm"
               className="w-full border-blue-500/30 text-blue-400 hover:bg-blue-950/20 disabled:opacity-50"
+              title="Analyze Selected Clip (Ctrl/Cmd+Enter)"
             >
               {isAnalyzing ? (
                 <>
@@ -422,12 +510,12 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
           {/* Event Type */}
           <div className="space-y-2">
             <Label className="font-sans text-xs font-semibold text-primary">
-              Event Type *
+              Event Type * (Press '/' to focus)
             </Label>
             <Select value={annotation.event} onValueChange={(value) => 
               setAnnotation(prev => ({ ...prev, event: value }))
             }>
-              <SelectTrigger className="h-9">
+              <SelectTrigger className="h-9" data-testid="event-type-select">
                 <SelectValue placeholder="Select event type" />
               </SelectTrigger>
               <SelectContent>
@@ -487,7 +575,7 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
                     setAnnotation(prev => ({ ...prev, player2: e.target.value }))
                   }
                   className="h-9"
-                />
+            />
               </div>
             </div>
           </div>
@@ -550,15 +638,28 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
             />
           </div>
 
-          {/* Save Button */}
-          <Button
-            onClick={handleSaveAnnotation}
-            className="w-full bg-green-600 hover:bg-green-700 text-white"
-            disabled={!annotation.event || !annotation.technique || !selectedClip}
-          >
-            <Save className="mr-2 h-4 w-4" />
-            {annotation.id ? 'Update Annotation' : 'Save Annotation'}
-          </Button>
+          {/* Action Buttons */}
+          <div className="space-y-2">
+            <Button
+              onClick={handleCleanAnnotation}
+              variant="outline"
+              className="w-full border-orange-500/30 text-orange-400 hover:bg-orange-950/20"
+              title="Clean Annotation (Ctrl/Cmd+Backspace)"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clean Annotation
+            </Button>
+            
+            <Button
+              onClick={handleSaveAnnotation}
+              className="w-full bg-green-600 hover:bg-green-700 text-white"
+              disabled={!annotation.event || !annotation.technique || !selectedClip}
+              title="Save Annotation (Shift+Enter)"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {annotation.id ? 'Update Annotation' : 'Save Annotation'}
+            </Button>
+          </div>
 
         </div>
       </ScrollArea>

@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button";
 import { dispatch } from "@designcombo/events";
 import {
   ACTIVE_SPLIT,
-  LAYER_CLONE,
   LAYER_DELETE,
   TIMELINE_SCALE_CHANGED,
 } from "@designcombo/state";
@@ -21,6 +20,7 @@ import { Slider } from "@/components/ui/slider";
 import { useEffect, useState } from "react";
 import useUpdateAnsestors from "../hooks/use-update-ansestors";
 import { ITimelineScaleState } from "@designcombo/types";
+import AudioControls from "./audio-controls";
 
 const IconPlayerPlayFilled = ({ size }: { size: number }) => (
   <svg
@@ -124,6 +124,96 @@ const Header = () => {
     });
   };
 
+  const handleSelectPreviousClip = () => {
+    const { trackItemsMap } = useStore.getState();
+    const clips = Object.values(trackItemsMap).filter(item => item.type === 'video');
+    
+    if (clips.length === 0) return;
+    
+    let targetClipId: string;
+    
+    if (activeIds.length === 0) {
+      // No clip selected, select the first one
+      targetClipId = clips[0].id;
+    } else {
+      // Find current clip and select previous one
+      const currentClipIndex = clips.findIndex(clip => clip.id === activeIds[0]);
+      if (currentClipIndex > 0) {
+        targetClipId = clips[currentClipIndex - 1].id;
+      } else {
+        return; // Already at first clip
+      }
+    }
+    
+    // Use stateManager to trigger proper selection events
+    const stateManager = useStore.getState().timeline?.state;
+    if (stateManager) {
+      stateManager.updateState(
+        { activeIds: [targetClipId] },
+        { updateHistory: false, kind: "layer:selection" }
+      );
+    }
+  };
+
+  const handleSelectNextClip = () => {
+    const { trackItemsMap } = useStore.getState();
+    const clips = Object.values(trackItemsMap).filter(item => item.type === 'video');
+    
+    if (clips.length === 0) return;
+    
+    let targetClipId: string;
+    
+    if (activeIds.length === 0) {
+      // No clip selected, select the first one
+      targetClipId = clips[0].id;
+    } else {
+      // Find current clip and select next one
+      const currentClipIndex = clips.findIndex(clip => clip.id === activeIds[0]);
+      if (currentClipIndex < clips.length - 1) {
+        targetClipId = clips[currentClipIndex + 1].id;
+      } else {
+        return; // Already at last clip
+      }
+    }
+    
+    // Use stateManager to trigger proper selection events
+    const stateManager = useStore.getState().timeline?.state;
+    if (stateManager) {
+      stateManager.updateState(
+        { activeIds: [targetClipId] },
+        { updateHistory: false, kind: "layer:selection" }
+      );
+    }
+  };
+
+  const handleSelectClipByNumber = (key: string) => {
+    const { trackItemsMap } = useStore.getState();
+    const clips = Object.values(trackItemsMap).filter(item => item.type === 'video');
+    
+    if (clips.length === 0) return;
+    
+    let targetIndex: number;
+    
+    if (key === '0') {
+      // Key '0' selects the last clip
+      targetIndex = clips.length - 1;
+    } else {
+      // Keys '1'-'9' select clips by index (1-based)
+      targetIndex = parseInt(key) - 1;
+    }
+    
+    // Check if the target index is valid
+    if (targetIndex >= 0 && targetIndex < clips.length) {
+      const stateManager = useStore.getState().timeline?.state;
+      if (stateManager) {
+        stateManager.updateState(
+          { activeIds: [clips[targetIndex].id] },
+          { updateHistory: false, kind: "layer:selection" }
+        );
+      }
+    }
+  };
+
   const changeScale = (scale: ITimelineScaleState) => {
     dispatch(TIMELINE_SCALE_CHANGED, {
       payload: {
@@ -163,6 +253,104 @@ const Header = () => {
     };
   }, [playerRef]);
 
+  // Keyboard shortcuts for timeline controls
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs, textareas, or contenteditable elements
+      const target = event.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.contentEditable === 'true'
+      ) {
+        return;
+      }
+
+      switch (event.key) {
+        case 's':
+        case 'S':
+          if (activeIds.length > 0) {
+            event.preventDefault();
+            doActiveSplit();
+          }
+          break;
+        case 'd':
+        case 'D':
+          if (activeIds.length > 0) {
+            event.preventDefault();
+            doActiveDelete();
+          }
+          break;
+        case ' ':
+          event.preventDefault();
+          if (playing) {
+            handlePause();
+          } else {
+            handlePlay();
+          }
+          break;
+        case 'ArrowLeft':
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            handleSelectPreviousClip();
+          } else {
+            event.preventDefault();
+            handleSkipBackward();
+          }
+          break;
+        case 'ArrowRight':
+          if (event.ctrlKey || event.metaKey) {
+            event.preventDefault();
+            handleSelectNextClip();
+          } else {
+            event.preventDefault();
+            handleSkipForward();
+          }
+          break;
+        case '+':
+        case '=':
+          event.preventDefault();
+          const nextZoom = getNextZoomLevel(scale);
+          changeScale(nextZoom);
+          break;
+        case '-':
+        case '_':
+          event.preventDefault();
+          const previousZoom = getPreviousZoomLevel(scale);
+          changeScale(previousZoom);
+          break;
+        case 'Escape':
+          event.preventDefault();
+          // Blur any focused input element (removed clip unselection)
+          const activeElement = document.activeElement as HTMLElement;
+          if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.contentEditable === 'true')) {
+            activeElement.blur();
+          }
+          break;
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+        case '0':
+          event.preventDefault();
+          handleSelectClipByNumber(event.key);
+          break;
+      }
+    };
+
+    // Add event listener to document for global shortcuts
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeIds, playing, scale, doActiveSplit, doActiveDelete, handlePlay, handlePause, handleSkipBackward, handleSkipForward, changeScale, handleSelectClipByNumber]);
+
   return (
     <div
       style={{
@@ -196,6 +384,7 @@ const Header = () => {
               variant={"ghost"}
               size={"sm"}
               className="flex items-center gap-1 px-2 text-red-400 hover:text-red-300 hover:bg-red-950/20"
+              title="Delete (D)"
             >
               <Trash size={14} /> Delete
             </Button>
@@ -206,24 +395,14 @@ const Header = () => {
               variant={"ghost"}
               size={"sm"}
               className="flex items-center gap-1 px-2 text-blue-400 hover:text-blue-300 hover:bg-blue-950/20 border border-blue-500/30"
+              title="Split Video (S)"
             >
               <SquareSplitHorizontal size={15} /> Split Video
-            </Button>
-            <Button
-              disabled={!activeIds.length}
-              onClick={() => {
-                dispatch(LAYER_CLONE);
-              }}
-              variant={"ghost"}
-              size={"sm"}
-              className="flex items-center gap-1 px-2 text-green-400 hover:text-green-300 hover:bg-green-950/20"
-            >
-              <SquareSplitHorizontal size={15} /> Clone
             </Button>
           </div>
           <div className="flex items-center justify-center">
             <div>
-              <Button onClick={handleSkipBackward} variant={"ghost"} size={"icon"}>
+              <Button onClick={handleSkipBackward} variant={"ghost"} size={"icon"} title="Skip Backward 5s (←)">
                 <IconPlayerSkipBack size={14} />
               </Button>
               <Button
@@ -235,6 +414,7 @@ const Header = () => {
                 }}
                 variant={"ghost"}
                 size={"icon"}
+                title="Play/Pause (Space)"
               >
                 {playing ? (
                   <IconPlayerPauseFilled size={14} />
@@ -242,7 +422,7 @@ const Header = () => {
                   <IconPlayerPlayFilled size={14} />
                 )}
               </Button>
-              <Button onClick={handleSkipForward} variant={"ghost"} size={"icon"}>
+              <Button onClick={handleSkipForward} variant={"ghost"} size={"icon"} title="Skip Forward 5s (→)">
                 <IconPlayerSkipForward size={14} />
               </Button>
             </div>
@@ -280,11 +460,14 @@ const Header = () => {
             </div>
           </div>
 
-          <ZoomControl
-            scale={scale}
-            onChangeTimelineScale={changeScale}
-            duration={duration}
-          />
+          <div className="flex items-center justify-end">
+            <AudioControls />
+            <ZoomControl
+              scale={scale}
+              onChangeTimelineScale={changeScale}
+              duration={duration}
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -324,7 +507,7 @@ const ZoomControl = ({
   return (
     <div className="flex items-center justify-end">
       <div className="flex border-l border-border pl-4 pr-2">
-        <Button size={"icon"} variant={"ghost"} onClick={onZoomOutClick}>
+        <Button size={"icon"} variant={"ghost"} onClick={onZoomOutClick} title="Zoom Out (-)">
           <ZoomOut size={16} />
         </Button>
         <Slider
@@ -341,7 +524,7 @@ const ZoomControl = ({
             onChangeTimelineScale(zoom); // Propagate value to parent when user commits change
           }}
         />
-        <Button size={"icon"} variant={"ghost"} onClick={onZoomInClick}>
+        <Button size={"icon"} variant={"ghost"} onClick={onZoomInClick} title="Zoom In (+)">
           <ZoomIn size={16} />
         </Button>
         <Button onClick={onZoomFitClick} variant={"ghost"} size={"icon"}>

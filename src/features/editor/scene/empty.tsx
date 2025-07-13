@@ -138,10 +138,11 @@ const SceneEmpty = () => {
               options: {
                 resourceId: "main",
                 scaleMode: "fit",
+                autoSelect: true, // Auto-select the video after adding
               },
             });
             
-            console.log("✅ Video added to timeline with ID:", videoId);
+            console.log("✅ Video added to timeline with ID:", videoId, "and auto-selected");
           }, { once: true });
         });
       }

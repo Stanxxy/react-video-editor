@@ -40,8 +40,8 @@ function useZoom(
 
     // Only update zoom if we have valid dimensions
     if (desiredZoom > 0 && isFinite(desiredZoom)) {
-      currentZoomRef.current = desiredZoom;
-      setZoom(desiredZoom);
+    currentZoomRef.current = desiredZoom;
+    setZoom(desiredZoom);
     } else {
       console.warn("⚠️ Invalid zoom calculated, keeping current zoom");
     }

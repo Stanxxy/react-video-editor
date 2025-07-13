@@ -36,7 +36,10 @@ export default function Navbar({
   projectName: string;
 }) {
   const [title, setTitle] = useState(projectName);
-  const { orientation, setOrientation, playerRef } = useStore();
+  const { orientation, setOrientation, playerRef, trackItemsMap } = useStore();
+
+  // Check if any videos are present in the scene
+  const hasVideos = Object.values(trackItemsMap).some(item => item.type === 'video');
 
   const handleUndo = () => {
     dispatch(HISTORY_UNDO);
@@ -84,36 +87,35 @@ export default function Navbar({
         const trackItemDetailsMap = updatedState.trackItemDetailsMap;
         const videoUpdates: Record<string, any> = {};
         
-        // Calculate scaling factors for existing video items
-        const scaleX = newSize.width / oldSize.width;
-        const scaleY = newSize.height / oldSize.height;
-        
-        console.log("📏 Scale factors:", { scaleX, scaleY });
+        console.log("📏 Canvas size change:", { from: oldSize, to: newSize });
         
         Object.keys(trackItemDetailsMap).forEach(itemId => {
           const item = trackItemDetailsMap[itemId];
           if (item?.type === 'video') {
-            const oldLeft = parseFloat(String(item.details?.left || '0'));
-            const oldTop = parseFloat(String(item.details?.top || '0'));
-            const oldWidth = parseFloat(String(item.details?.width || '0'));
-            const oldHeight = parseFloat(String(item.details?.height || '0'));
+            // Get video's original dimensions from metadata if available
+            const originalVideoWidth = item.metadata?.width || parseFloat(String(item.details?.width || '0'));
+            const originalVideoHeight = item.metadata?.height || parseFloat(String(item.details?.height || '0'));
             
-            // Calculate original aspect ratio to preserve it
-            const aspectRatio = oldWidth / oldHeight;
+            // Calculate video aspect ratio from original dimensions
+            const aspectRatio = originalVideoWidth / originalVideoHeight;
             
-            // Calculate optimal size to fit the new canvas while maintaining aspect ratio
+            console.log(`📹 Video ${itemId} original dimensions:`, {
+              originalVideoWidth,
+              originalVideoHeight,
+              aspectRatio
+            });
+            
+            // Calculate what size the video should be to completely fill the new canvas
+            const canvasAspectRatio = newSize.width / newSize.height;
             let newWidth, newHeight;
             
-            // Calculate what size the video should be to optimally fill the new canvas
-            const canvasAspectRatio = newSize.width / newSize.height;
-            
             if (aspectRatio > canvasAspectRatio) {
-              // Video is wider relative to canvas - fit to width
-              newWidth = newSize.width * 0.8; // Use 80% of canvas width for some padding
+              // Video is wider relative to canvas - fit to width (fill entire width)
+              newWidth = newSize.width;
               newHeight = newWidth / aspectRatio;
             } else {
-              // Video is taller relative to canvas - fit to height  
-              newHeight = newSize.height * 0.8; // Use 80% of canvas height for some padding
+              // Video is taller relative to canvas - fit to height (fill entire height)
+              newHeight = newSize.height;
               newWidth = newHeight * aspectRatio;
             }
             
@@ -124,20 +126,16 @@ export default function Navbar({
               newDimensions: [newWidth, newHeight]
             });
             
-            // For position, center the video in the new canvas for optimal fit
-            const canvasCenterX = newSize.width / 2;
-            const canvasCenterY = newSize.height / 2;
-            
-            // Center the video in the canvas
-            const newLeft = canvasCenterX - (newWidth / 2);
-            const newTop = canvasCenterY - (newHeight / 2);
+            // Center the video in the canvas (this matches the initial "fit" positioning)
+            const newLeft = (newSize.width - newWidth) / 2;
+            const newTop = (newSize.height - newHeight) / 2;
             
             console.log(`🎬 Transforming video ${itemId}:`, {
               aspectRatio,
               oldCanvas: [oldSize.width, oldSize.height],
               newCanvas: [newSize.width, newSize.height],
-              size: { from: [oldWidth, oldHeight], to: [newWidth, newHeight] },
-              position: { from: [oldLeft, oldTop], to: [newLeft, newTop] },
+              newDimensions: [newWidth, newHeight],
+              newPosition: [newLeft, newTop],
               centered: true
             });
             
@@ -194,6 +192,48 @@ export default function Navbar({
     setTitle(e.target.value);
   };
 
+  // Keyboard shortcuts for navbar controls
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs, textareas, or contenteditable elements
+      const target = event.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.contentEditable === 'true'
+      ) {
+        return;
+      }
+
+      // Handle Z for undo (changed from Ctrl+Z to just Z)
+      if (event.key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        handleUndo();
+      }
+      // Handle Shift+Z for redo (changed from Ctrl+Shift+Z to just Shift+Z)
+      else if (event.shiftKey && event.key === 'Z') {
+        event.preventDefault();
+        handleRedo();
+      }
+      // Handle Escape key to blur inputs (removed clip unselection)
+      else if (event.key === 'Escape') {
+        event.preventDefault();
+        // Blur any focused input element
+        const activeElement = document.activeElement as HTMLElement;
+        if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.contentEditable === 'true')) {
+          activeElement.blur();
+        }
+      }
+    };
+
+    // Add event listener to document for global shortcuts
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleUndo, handleRedo]);
+
   return (
     <div
       style={{
@@ -237,6 +277,7 @@ export default function Navbar({
             className="text-muted-foreground"
             variant="ghost"
             size="icon"
+            title="Undo (Z)"
           >
             <Icons.undo width={20} />
           </Button>
@@ -245,6 +286,7 @@ export default function Navbar({
             className="text-muted-foreground"
             variant="ghost"
             size="icon"
+            title="Redo (Shift+Z)"
           >
             <Icons.redo width={20} />
           </Button>
@@ -253,20 +295,22 @@ export default function Navbar({
         {/* Orientation Toggle */}
         <div className="bg-sidebar pointer-events-auto flex h-12 items-center px-1.5 border-l border-border/40">
           <Button
-            onClick={() => handleOrientationChange('horizontal')}
-            className={`text-muted-foreground ${orientation === 'horizontal' ? 'bg-background text-white' : ''}`}
+            onClick={hasVideos ? undefined : () => handleOrientationChange('horizontal')}
+            className={`${hasVideos ? 'text-muted-foreground/50 cursor-not-allowed' : 'text-muted-foreground'} ${orientation === 'horizontal' && !hasVideos ? 'bg-background text-white' : ''}`}
             variant="ghost"
             size="icon"
-            title="Horizontal (YouTube 16:9)"
+            disabled={hasVideos}
+            title={hasVideos ? "Cannot switch orientation when videos are present" : "Horizontal (YouTube 16:9)"}
           >
             <Monitor width={16} />
           </Button>
           <Button
-            onClick={() => handleOrientationChange('vertical')}
-            className={`text-muted-foreground ${orientation === 'vertical' ? 'bg-background text-white' : ''}`}
+            onClick={hasVideos ? undefined : () => handleOrientationChange('vertical')}
+            className={`${hasVideos ? 'text-muted-foreground/50 cursor-not-allowed' : 'text-muted-foreground'} ${orientation === 'vertical' && !hasVideos ? 'bg-background text-white' : ''}`}
             variant="ghost"
             size="icon"
-            title="Vertical (TikTok 9:16)"
+            disabled={hasVideos}
+            title={hasVideos ? "Cannot switch orientation when videos are present" : "Vertical (TikTok 9:16)"}
           >
             <Smartphone width={16} />
           </Button>

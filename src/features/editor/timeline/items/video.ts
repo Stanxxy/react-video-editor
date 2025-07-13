@@ -172,7 +172,7 @@ class Video extends VideoBase {
 
     console.log("🎬 Video.prepareAssets() - Starting asset preparation for:", this.src);
     console.log("📊 Metadata available:", this.metadata);
-    
+
     try {
       const { MP4Clip } = await import("@designcombo/frames");
       console.log("✅ MP4Clip imported successfully");
@@ -186,7 +186,7 @@ class Video extends VideoBase {
         stream = metadataWithFile.originalFile.stream();
       } else {
         console.log("🌐 Fetching file from URL:", this.src);
-        const file = await getFileFromUrl(this.src);
+      const file = await getFileFromUrl(this.src);
         console.log("✅ File fetched successfully:", file.name, file.size, "bytes");
         stream = file.stream();
       }
@@ -326,33 +326,33 @@ class Video extends VideoBase {
         
       } else {
         // For regular URLs, use the original approach
-        img.onload = () => {
+      img.onload = () => {
           console.log("✅ Fallback thumbnail loaded successfully:", img.width, "x", img.height);
           
-          // Create a temporary canvas to resize the image
+        // Create a temporary canvas to resize the image
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d')!;
 
-          // Calculate new width maintaining aspect ratio
-          const aspectRatio = img.width / img.height;
-          const targetHeight = 40;
-          const targetWidth = Math.round(targetHeight * aspectRatio);
+        // Calculate new width maintaining aspect ratio
+        const aspectRatio = img.width / img.height;
+        const targetHeight = 40;
+        const targetWidth = Math.round(targetHeight * aspectRatio);
           
           console.log("🎨 Resizing thumbnail to:", targetWidth, "x", targetHeight);
           
-          // Set canvas size and draw resized image
-          canvas.height = targetHeight;
-          canvas.width = targetWidth;
-          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+        // Set canvas size and draw resized image
+        canvas.height = targetHeight;
+        canvas.width = targetWidth;
+        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
-          // Create new image from resized canvas
-          const resizedImg = new Image();
-          resizedImg.src = canvas.toDataURL();
+        // Create new image from resized canvas
+        const resizedImg = new Image();
+        resizedImg.src = canvas.toDataURL();
           
-          // Update aspect ratio and cache the resized image
-          this.aspectRatio = aspectRatio;
-          this.thumbnailWidth = targetWidth;
-          this.thumbnailCache.setThumbnail("fallback", resizedImg);
+        // Update aspect ratio and cache the resized image
+        this.aspectRatio = aspectRatio;
+        this.thumbnailWidth = targetWidth;
+        this.thumbnailCache.setThumbnail("fallback", resizedImg);
           
           console.log("✅ Fallback thumbnail cached successfully with aspectRatio:", aspectRatio);
           resolve();
@@ -361,8 +361,8 @@ class Video extends VideoBase {
         img.onerror = (error) => {
           console.error("❌ Failed to load fallback thumbnail:", error);
           this.setDefaultAspectRatio();
-          resolve();
-        };
+        resolve();
+      };
       }
       
       img.src = fallbackThumbnail + (fallbackThumbnail.includes('?') ? '&' : '?') + "t=" + Date.now();
@@ -509,37 +509,39 @@ class Video extends VideoBase {
     console.log("⏰ Generated timestamps:", timestamps);
 
     try {
-      // Match and prepare thumbnails
-      let thumbnailsArr = await this.clip.thumbnailsList(this.thumbnailWidth, {
-        timestamps: timestamps.map((timestamp) => timestamp * 1e6),
-      });
+    // Match and prepare thumbnails
+    let thumbnailsArr = await this.clip.thumbnailsList(this.thumbnailWidth, {
+      timestamps: timestamps.map((timestamp) => timestamp * 1e6),
+    });
 
       console.log("✅ MP4Clip.thumbnailsList returned:", thumbnailsArr.length, "thumbnails");
 
-      const updatedThumbnails = thumbnailsArr.map((thumbnail) => {
-        return {
-          ts: Math.round(thumbnail.ts / 1e6),
-          img: thumbnail.img,
-        };
-      });
+    const updatedThumbnails = thumbnailsArr.map((thumbnail) => {
+      return {
+        ts: Math.round(thumbnail.ts / 1e6),
+        img: thumbnail.img,
+      };
+    });
 
       console.log("🔄 Processing", updatedThumbnails.length, "thumbnails");
 
-      // Load all thumbnails in parallel
-      await this.loadThumbnailBatch(updatedThumbnails);
+    // Load all thumbnails in parallel
+    await this.loadThumbnailBatch(updatedThumbnails);
 
       console.log("✅ Thumbnail batch loaded successfully");
 
-      this.isDirty = true; // Mark as dirty after preparing new thumbnails
-      // this.isFallbackDirty = true;
-      this.isFetchingThumbnails = false;
+    this.isDirty = true; // Mark as dirty after preparing new thumbnails
+    // this.isFallbackDirty = true;
+    this.isFetchingThumbnails = false;
 
-      this.currentFilmstrip = { ...this.loadingFilmstrip };
+    this.currentFilmstrip = { ...this.loadingFilmstrip };
+    
+    console.log("✅ Updated currentFilmstrip:", this.currentFilmstrip);
 
-      requestAnimationFrame(() => {
-        console.log("🎨 Requesting canvas re-render");
-        this.canvas?.requestRenderAll();
-      });
+    requestAnimationFrame(() => {
+        console.log("🎨 Requesting canvas re-render with filmstrip:", this.currentFilmstrip);
+      this.canvas?.requestRenderAll();
+    });
     } catch (error) {
       console.error("❌ Error in loadAndRenderThumbnails:", error);
       this.isFetchingThumbnails = false;
@@ -616,6 +618,12 @@ class Video extends VideoBase {
     }
 
     console.log("🎨 renderToOffscreen() called, filmstrip:", this.currentFilmstrip);
+    
+    // Check if filmstrip is valid
+    if (!this.currentFilmstrip.thumbnailsCount || this.currentFilmstrip.thumbnailsCount <= 0) {
+      console.log("⚠️  Invalid filmstrip data - thumbnailsCount is 0, skipping render");
+      return;
+    }
 
     this.offscreenCanvas!.width = this.width;
     const ctx = this.offscreenCtx;
@@ -815,10 +823,25 @@ class Video extends VideoBase {
     }
   }
   public onScale() {
+    console.log("🔄 onScale() called - resetting thumbnail state, current tScale:", this.tScale);
+    
+    // Reset all filmstrip state
     this.currentFilmstrip = { ...EMPTY_FILMSTRIP };
     this.nextFilmstrip = { ...EMPTY_FILMSTRIP, segmentIndex: 0 };
     this.loadingFilmstrip = { ...EMPTY_FILMSTRIP };
-    this.onScrollChange({ scrollLeft: this.scrollLeft, force: true });
+    
+    // Important: Reset the fetching flag to allow immediate thumbnail reload
+    this.isFetchingThumbnails = false;
+    
+    // Mark as dirty to force re-render
+    this.isDirty = true;
+    
+    // Add a small delay to ensure the canvas and timeline have processed the scale change
+    setTimeout(() => {
+      console.log("🔄 Executing delayed onScrollChange after scale reset, tScale:", this.tScale);
+      // Force scroll change with immediate effect
+      this.onScrollChange({ scrollLeft: this.scrollLeft, force: true });
+    }, 50);
   }
 }
 

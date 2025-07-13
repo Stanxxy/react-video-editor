@@ -132,12 +132,13 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
         text: 32,
       },
       acceptsMap: {
-        main: ["video"], // Only accept videos on main track
+        main: ["video"], // Only accept videos on main track - no new video tracks allowed
         audio: ["audio"],
         caption: ["caption", "text"],
         text: ["text", "caption"],
       },
       guideLineColor: "#ffffff",
+      // Note: Videos can only be dropped on the main track due to acceptsMap restriction
     });
 
     canvasRef.current = canvas;
@@ -178,12 +179,44 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     const itemsDetailsSubscription = stateManager.subscribeToAddOrRemoveItems(
       () => {
         const currentState = stateManager.getState();
-        setState({
-          trackItemDetailsMap: currentState.trackItemDetailsMap,
-          trackItemsMap: currentState.trackItemsMap,
-          trackItemIds: currentState.trackItemIds,
-          tracks: currentState.tracks,
-        });
+        
+        // Check for newly added video items to auto-select them
+        const newVideoItems = Object.values(currentState.trackItemsMap).filter(
+          (item: ITrackItem) => item.type === 'video' && !trackItemsMap[item.id]
+        );
+        
+        // If there are new video items, auto-select the first one
+        if (newVideoItems.length > 0) {
+          const newVideoId = newVideoItems[0].id;
+          console.log("🎯 Auto-selecting newly added video:", newVideoId);
+          
+          // Update the state to include the new selection
+          setState({
+            trackItemDetailsMap: currentState.trackItemDetailsMap,
+            trackItemsMap: currentState.trackItemsMap,
+            trackItemIds: currentState.trackItemIds,
+            tracks: currentState.tracks,
+            activeIds: [newVideoId], // Auto-select the new video
+          });
+          
+          // Also update the stateManager to reflect the selection
+          stateManager.updateState(
+            {
+              activeIds: [newVideoId],
+            },
+            {
+              updateHistory: false,
+              kind: "layer:selection",
+            },
+          );
+        } else {
+          setState({
+            trackItemDetailsMap: currentState.trackItemDetailsMap,
+            trackItemsMap: currentState.trackItemsMap,
+            trackItemIds: currentState.trackItemIds,
+            tracks: currentState.tracks,
+          });
+        }
       },
     );
 
@@ -332,6 +365,21 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     const canvasWidth = timeline.width;
     if (availableScroll < canvasWidth + scrollLeft) {
       timeline.scrollTo({ scrollLeft: availableScroll - canvasWidth });
+    }
+
+    // Force thumbnail regeneration when scale changes
+    // This ensures thumbnails are properly updated when using zoom shortcuts
+    const canvas = canvasRef.current;
+    if (canvas) {
+      console.log("📏 Scale changed, forcing thumbnail regeneration");
+      
+      // Call onScaleChange immediately to prevent timing issues
+      canvas.onScaleChange();
+      
+      // Request render after a brief delay to ensure thumbnails are loaded
+      setTimeout(() => {
+        canvas.requestRenderAll();
+      }, 150);
     }
   }, [scale]);
 

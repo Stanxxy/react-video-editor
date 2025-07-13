@@ -68,6 +68,29 @@ class Timeline extends TimelineBase {
     }
   }, 250);
 
+  // Method to force immediate thumbnail updates (bypassing throttle)
+  public forceScrollChange = async () => {
+    const objects = this.getObjects();
+    const viewportTransform = this.viewportTransform;
+    const scrollLeft = viewportTransform[4];
+    for (const object of objects) {
+      if (object instanceof Video || object instanceof Audio) {
+        object.onScrollChange({ scrollLeft, force: true });
+      }
+    }
+  };
+
+  // Method to handle scale changes for video objects
+  public onScaleChange = async () => {
+    const objects = this.getObjects();
+    for (const object of objects) {
+      if (object instanceof Video) {
+        // Call the onScale method which resets filmstrip and forces thumbnail reload
+        object.onScale();
+      }
+    }
+  };
+
   public scrollTo({
     scrollLeft,
     scrollTop,

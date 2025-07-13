@@ -176,53 +176,53 @@ export const useDownloadState = create<DownloadState>((set, get) => ({
           
         } else {
           // Handle MP4 export (original code)
-          const { payload } = get();
+        const { payload } = get();
 
-          if (!payload) throw new Error("Payload is not defined");
+        if (!payload) throw new Error("Payload is not defined");
 
-          // Step 1: POST request to start rendering
-          const response = await fetch("/api/render", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
+        // Step 1: POST request to start rendering
+        const response = await fetch("/api/render", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            design: payload,
+            options: {
+              fps: 30,
+              size: payload.size,
+              format: "mp4",
             },
-            body: JSON.stringify({
-              design: payload,
-              options: {
-                fps: 30,
-                size: payload.size,
-                format: "mp4",
-              },
-            }),
-          });
+          }),
+        });
 
-          if (!response.ok) throw new Error("Failed to submit export request.");
+        if (!response.ok) throw new Error("Failed to submit export request.");
 
-          const jobInfo = await response.json();
-          const videoId = jobInfo.video.id;
+        const jobInfo = await response.json();
+        const videoId = jobInfo.video.id;
 
-          // Step 2 & 3: Polling for status updates
-          const checkStatus = async () => {
-            const statusResponse = await fetch(
-              `/api/render?id=${videoId}&type=VIDEO_RENDERING`,
-            );
+        // Step 2 & 3: Polling for status updates
+        const checkStatus = async () => {
+          const statusResponse = await fetch(
+            `/api/render?id=${videoId}&type=VIDEO_RENDERING`,
+          );
 
-            if (!statusResponse.ok)
-              throw new Error("Failed to fetch export status.");
+          if (!statusResponse.ok)
+            throw new Error("Failed to fetch export status.");
 
-            const statusInfo = await statusResponse.json();
-            const { status, progress, url } = statusInfo.video;
+          const statusInfo = await statusResponse.json();
+          const { status, progress, url } = statusInfo.video;
 
-            set({ progress });
+          set({ progress });
 
-            if (status === "COMPLETED") {
-              set({ exporting: false, output: { url, type: get().exportType } });
-            } else if (status === "PENDING") {
-              setTimeout(checkStatus, 2500);
-            }
-          };
+          if (status === "COMPLETED") {
+            set({ exporting: false, output: { url, type: get().exportType } });
+          } else if (status === "PENDING") {
+            setTimeout(checkStatus, 2500);
+          }
+        };
 
-          checkStatus();
+        checkStatus();
         }
       } catch (error) {
         console.error(error);

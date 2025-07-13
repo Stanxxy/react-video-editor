@@ -44,15 +44,15 @@ export const ControlItem = ({ stateManager }: { stateManager: StateManager }) =>
   }, [activeIds, trackItemsMap]);
 
   const renderActiveControlItem = () => {
-    if (!trackItem) {
-      console.log("No item selected");
-      return (
-        <div className="mb-32 flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-          <LassoSelect />
-          <span className="text-zinc-500">No item selected</span>
-        </div>
-      );
-    }
+  if (!trackItem) {
+    console.log("No item selected");
+    return (
+      <div className="mb-32 flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+        <LassoSelect />
+        <span className="text-zinc-500">No item selected</span>
+      </div>
+    );
+  }
 
     switch (trackItem.type) {
       case "text":
@@ -66,14 +66,14 @@ export const ControlItem = ({ stateManager }: { stateManager: StateManager }) =>
       case "audio":
         return <BasicAudio trackItem={trackItem as ITrackItem & IAudio} />;
       default:
-        return (
+  return (
           <div className="mb-32 flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
             <LassoSelect />
             <span className="text-zinc-500">Unsupported item type</span>
           </div>
-        );
+  );
     }
-  };
+};
 
   return (
     <div className="flex w-[272px] flex-none border-l border-border/80 bg-sidebar">
