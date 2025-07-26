@@ -1,7 +1,5 @@
-import { Input } from "@/components/ui/input";
-
-import { Slider } from "@/components/ui/slider";
-import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Volume2, VolumeX } from "lucide-react";
 
 const Volume = ({
   value,
@@ -10,53 +8,41 @@ const Volume = ({
   value: number;
   onChange: (v: number) => void;
 }) => {
-  // Create local state to manage opacity
-  const [localValue, setLocalValue] = useState(value);
+  const isMuted = value === 0;
 
-  // Update local state when prop value changes
-  useEffect(() => {
-    setLocalValue(value);
-  }, [value]);
+  const handleToggleMute = () => {
+    if (isMuted) {
+      // Unmute - set to 100%
+      onChange(100);
+    } else {
+      // Mute - set to 0%
+      onChange(0);
+    }
+  };
 
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 items-center">
       <div className="flex flex-1 items-center text-sm text-muted-foreground">
         Volume
       </div>
-      <div
-        className="w-32"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 80px",
-        }}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleToggleMute}
+        className="w-20 h-8 flex items-center gap-2"
       >
-        <Input
-          variant="secondary"
-          className="h-8 w-11 px-2 text-center text-sm"
-          type="number"
-          onChange={(e) => {
-            const newValue = Number(e.target.value);
-            if (newValue >= 0 && newValue <= 100) {
-              setLocalValue(newValue); // Update local state
-              onChange(newValue); // Optionally propagate immediately, or adjust as needed
-            }
-          }}
-          value={localValue} // Use local state for input value
-        />
-        <Slider
-          id="opacity"
-          value={[localValue]} // Use local state for slider value
-          onValueChange={(e) => {
-            setLocalValue(e[0]); // Update local state
-          }}
-          onValueCommit={() => {
-            onChange(localValue); // Propagate value to parent when user commits change
-          }}
-          max={100}
-          step={1}
-          aria-label="Temperature"
-        />
-      </div>
+        {isMuted ? (
+          <>
+            <VolumeX size={14} />
+            <span className="text-xs">Muted</span>
+          </>
+        ) : (
+          <>
+            <Volume2 size={14} />
+            <span className="text-xs">On</span>
+          </>
+        )}
+      </Button>
     </div>
   );
 };

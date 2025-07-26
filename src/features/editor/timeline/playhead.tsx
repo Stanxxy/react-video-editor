@@ -193,75 +193,7 @@ const Playhead = ({ scrollLeft }: { scrollLeft: number }) => {
     };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // Check if mobile to render centered playhead within timeline
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  
-  if (isMobile) {
-    // Get the timeline canvas container to position playhead in the center  
-    const canvasContainer = document.getElementById("designcombo-timeline-canvas")?.parentElement;
-    const containerWidth = canvasContainer?.clientWidth || window.innerWidth;
-    const centerX = containerWidth / 2;
-    
-    return (
-      <div
-        style={{
-          position: "absolute",
-          left: centerX - 1.5, // Center the 3px wide playhead
-          top: 0,
-          width: 3,
-          height: "100%",
-          zIndex: 30,
-          pointerEvents: "none", // Critical: Don't interfere with pinch gestures
-        }}
-      >
-        {/* Top indicator */}
-        <div
-          style={{
-            position: "absolute",
-            top: -8,
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 24,
-            height: 16,
-            borderRadius: "0 0 8px 8px",
-            background: "linear-gradient(to bottom, #3b82f6, #1d4ed8)",
-            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.4)",
-            border: "2px solid white",
-          }}
-        />
-        
-        {/* Playhead line */}
-        <div 
-          style={{
-            position: "absolute",
-            top: 8,
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 3,
-            height: "calc(100% - 16px)",
-            background: "linear-gradient(to bottom, #3b82f6, #1d4ed8)",
-            boxShadow: "0 0 12px rgba(59, 130, 246, 0.6)",
-          }}
-        />
-        
-        {/* Bottom indicator */}
-        <div
-          style={{
-            position: "absolute",
-            bottom: -8,
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 24,
-            height: 16,
-            borderRadius: "8px 8px 0 0",
-            background: "linear-gradient(to top, #3b82f6, #1d4ed8)",
-            boxShadow: "0 -4px 12px rgba(0, 0, 0, 0.4)",
-            border: "2px solid white",
-          }}
-        />
-      </div>
-    );
-  }
+
 
   return (
     <div

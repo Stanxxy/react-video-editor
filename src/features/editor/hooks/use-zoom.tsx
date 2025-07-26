@@ -13,6 +13,28 @@ function useZoom(
   const currentZoomRef = useRef(0.01);
   const { trackItemsMap } = useStore();
 
+  // Add resize observer to handle container size changes
+  useEffect(() => {
+    const container = containerRef.current;
+    const viewer = viewerRef.current?.infiniteViewer;
+    
+    if (!container || !viewer) return;
+    
+    const resizeObserver = new ResizeObserver(() => {
+      // Recenter the scene when container size changes
+      setTimeout(() => {
+        viewer.scrollCenter();
+        console.log("🔄 Scene recentered after resize");
+      }, 100);
+    });
+    
+    resizeObserver.observe(container);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [containerRef, viewerRef]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !size?.width || !size?.height) return;
@@ -64,10 +86,20 @@ function useZoom(
       console.warn("⚠️ Invalid zoom calculated, keeping current zoom");
     }
     
-    // Center the viewer after zoom change
+    // Center the viewer after zoom change with improved responsiveness
     setTimeout(() => {
-      viewerRef.current?.infiniteViewer.scrollCenter();
-    }, 100);
+      const viewer = viewerRef.current?.infiniteViewer;
+      if (viewer) {
+        // Force immediate center positioning
+        viewer.scrollCenter();
+        
+        // Additional centering to handle edge cases
+        setTimeout(() => {
+          viewer.scrollCenter();
+          console.log("🎯 Scene centered in viewport");
+        }, 50);
+      }
+    }, 50);
   }, [size, containerRef, viewerRef, trackItemsMap]);
 
   const handlePinch = useCallback((e: OnPinch) => {

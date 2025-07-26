@@ -155,46 +155,8 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     
     const position = timeMsToUnits((currentFrame / fps) * 1000, scale.zoom);
     
-    // On mobile, auto-scroll timeline to keep current frame centered
-    if (isMobile) {
-      const scrollableElement = horizontalScrollbarVpRef.current;
-      if (scrollableElement) {
-        const containerWidth = scrollableElement.clientWidth;
-        const centerOffset = containerWidth / 2;
-        
-        // For frame 0, we want the video start to be at center
-        // For other frames, we want to maintain the current frame at center
-        const targetScrollLeft = position - centerOffset + 40; // Add offset for timeline padding
-        
-        console.log("📱 Mobile timeline scroll:", {
-          currentFrame,
-          position,
-          centerOffset,
-          targetScrollLeft,
-          containerWidth,
-          scrollableElement: !!scrollableElement
-        });
-        
-        // Use immediate scroll (not smooth) to avoid lag during playback
-        const finalScrollLeft = Math.max(0, targetScrollLeft);
-        scrollableElement.scrollLeft = finalScrollLeft;
-        
-        // Also update the scrollLeft state for other components
-        setScrollLeft(finalScrollLeft);
-        
-        // Force canvas scroll update and trigger onScrollChange for thumbnails
-        const canvas = canvasRef.current;
-        if (canvas) {
-          canvas.scrollTo({ scrollLeft: finalScrollLeft });
-          // Force immediate thumbnail updates for mobile
-          canvas.forceScrollChange();
-        }
-      }
-      return; // Skip desktop playhead positioning logic
-    }
-    
-    // On desktop, auto-scroll timeline to keep playhead visible when using skip controls
-    if (!isMobile) {
+    // Auto-scroll timeline to keep playhead visible when using skip controls (both desktop and mobile)
+    {
       const scrollableElement = horizontalScrollbarVpRef.current;
       if (scrollableElement) {
         const containerWidth = scrollableElement.clientWidth;
@@ -379,40 +341,7 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
           const newVideoId = newVideoItems[0].id;
           console.log("🎯 Auto-selecting newly added video:", newVideoId);
           
-          // On mobile, ensure the timeline starts properly positioned for new videos
-          if (isMobile) {
-            console.log("📱 New video added on mobile, positioning timeline");
-            
-            // Force scroll to ensure video start (frame 0) is centered
-            setTimeout(() => {
-              const scrollableElement = horizontalScrollbarVpRef.current;
-              if (scrollableElement) {
-                const containerWidth = scrollableElement.clientWidth;
-                const centerOffset = containerWidth / 2;
-                
-                // Position 0 should be at center (video start at playhead)
-                const targetScrollLeft = 40 - centerOffset; // Account for timeline padding
-                
-                console.log("📱 Positioning timeline for new video:", {
-                  containerWidth,
-                  centerOffset,
-                  targetScrollLeft
-                });
-                
-                                 const finalScrollLeft = Math.max(0, targetScrollLeft);
-                 scrollableElement.scrollLeft = finalScrollLeft;
-                 setScrollLeft(finalScrollLeft);
-                 
-                 // Also update canvas scroll and force thumbnail updates
-                 const canvas = canvasRef.current;
-                 if (canvas) {
-                   canvas.scrollTo({ scrollLeft: finalScrollLeft });
-                   // Force immediate thumbnail updates for the new video
-                   canvas.forceScrollChange();
-                 }
-              }
-            }, 100); // Small delay to ensure video is fully added
-          }
+          
           
           // Update the state to include the new selection
           setState({

@@ -279,26 +279,29 @@ export default function Navbar({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <div className="bg-sidebar pointer-events-auto flex h-12 items-center px-1.5">
-          <Button
-            onClick={handleUndo}
-            className="text-muted-foreground"
-            variant="ghost"
-            size="icon"
-            title="Undo (Z)"
-          >
-            <Icons.undo width={20} />
-          </Button>
-          <Button
-            onClick={handleRedo}
-            className="text-muted-foreground"
-            variant="ghost"
-            size="icon"
-            title="Redo (Shift+Z)"
-          >
-            <Icons.redo width={20} />
-          </Button>
-        </div>
+        {/* Undo/Redo buttons - Hidden on mobile */}
+        {!isMobile && (
+          <div className="bg-sidebar pointer-events-auto flex h-12 items-center px-1.5">
+            <Button
+              onClick={handleUndo}
+              className="text-muted-foreground"
+              variant="ghost"
+              size="icon"
+              title="Undo (Z)"
+            >
+              <Icons.undo width={20} />
+            </Button>
+            <Button
+              onClick={handleRedo}
+              className="text-muted-foreground"
+              variant="ghost"
+              size="icon"
+              title="Redo (Shift+Z)"
+            >
+              <Icons.redo width={20} />
+            </Button>
+          </div>
+        )}
         
         {/* Orientation Toggle - Hidden on mobile */}
         {!isMobile && (
@@ -397,7 +400,7 @@ const DownloadPopover = ({ stateManager }: { stateManager: StateManager }) => {
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="bg-sidebar z-[250] flex w-60 flex-col gap-4"
+        className="bg-black border-border z-[250] flex w-60 flex-col gap-4"
       >
         <Label>Export settings</Label>
 
@@ -408,7 +411,7 @@ const DownloadPopover = ({ stateManager }: { stateManager: StateManager }) => {
               <ChevronDown width={16} />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="bg-background-subtle z-[251] w-[--radix-popover-trigger-width] px-2 py-2">
+          <PopoverContent className="bg-black border-border z-[251] w-[--radix-popover-trigger-width] px-2 py-2">
             <div
               className="flex h-8 items-center rounded-sm px-3 text-sm hover:cursor-pointer hover:bg-zinc-800"
               onClick={() => {

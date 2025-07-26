@@ -6,6 +6,8 @@ export const getTargetControls = (targetType: string): string[] => {
       return ["e", "se"];
     case "image":
       return ["nw", "ne", "sw", "se"];
+    case "video":
+      return []; // No resize handles for videos
     case "svg":
       return ["nw", "n", "ne", "w", "e", "sw", "s", "se"];
     case "group":
@@ -52,6 +54,15 @@ export const getTargetAbles = (targetType: string): ITargetAbles => {
         keepRatio: true,
         draggable: true,
         snappable: true,
+      };
+    case "video":
+      return {
+        rotatable: false,
+        resizable: false,
+        scalable: false,
+        keepRatio: true,
+        draggable: false, // Disable dragging for videos
+        snappable: false,
       };
     case "group":
       return {

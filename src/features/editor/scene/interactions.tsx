@@ -189,12 +189,28 @@ export function SceneInteractions({
       zoom={1 / zoom}
       className="designcombo-scene-moveable"
       onDrag={({ target, top, left }) => {
+        // Check if target is a video element - if so, disable dragging
+        const targetId = getIdFromClassName(target.className) as string;
+        const targetItem = trackItemsMap[targetId];
+        
+        if (targetItem?.type === 'video') {
+          console.log("🚫 Video dragging disabled");
+          return; // Prevent video elements from being dragged
+        }
+        
         target.style.top = top + "px";
         target.style.left = left + "px";
       }}
       onDragEnd={({ target, isDrag }) => {
         if (!isDrag) return;
         const targetId = getIdFromClassName(target.className) as string;
+        const targetItem = trackItemsMap[targetId];
+        
+        // Don't update position for video elements
+        if (targetItem?.type === 'video') {
+          console.log("🚫 Video drag end ignored");
+          return;
+        }
 
         dispatch(EDIT_OBJECT, {
           payload: {
