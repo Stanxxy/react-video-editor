@@ -21,6 +21,9 @@ import {
 import { ITrackItem } from "@designcombo/types";
 import PreviewTrackItem from "./items/preview-drag-item";
 import { EDIT_OBJECT } from "@designcombo/state";
+import { useScreenSize } from "../../../utils/mobile";
+import { getNextZoomLevel, getPreviousZoomLevel } from "../utils/timeline";
+import { TIMELINE_SCALE_CHANGED } from "@designcombo/state";
 
 CanvasTimeline.registerItems({
   Text,
@@ -45,11 +48,17 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
   const verticalScrollbarVpRef = useRef<HTMLDivElement>(null);
   const horizontalScrollbarVpRef = useRef<HTMLDivElement>(null);
   const { scale, playerRef, fps, duration, setState, timeline, trackItemsMap } = useStore();
+  const screenSize = useScreenSize();
+  const isMobile = screenSize === 'mobile';
   const currentFrame = useCurrentPlayerFrame(playerRef!);
   const [canvasSize, setCanvasSize] = useState(EMPTY_SIZE);
   const [size, setSize] = useState<{ width: number; height: number }>(
     EMPTY_SIZE,
   );
+  
+  // Mobile pinch-to-zoom state
+  const [isZooming, setIsZooming] = useState(false);
+  const lastPinchDistance = useRef<number>(0);
 
   const { setTimeline } = useStore();
   const onScroll = (v: { scrollTop: number; scrollLeft: number }) => {
@@ -60,6 +69,77 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     }
   };
 
+  // Mobile pinch-to-zoom handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isMobile) return;
+    
+    // Handle two-finger pinch
+    if (e.touches.length === 2) {
+      setIsZooming(true);
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      lastPinchDistance.current = distance;
+      
+      console.log("🔍 Timeline pinch started:", { distance, timestamp: Date.now() });
+      
+      // Prevent any other touch interactions during pinch
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isMobile) return;
+    
+    // Handle pinch zoom
+    if (isZooming && e.touches.length === 2) {
+      e.preventDefault(); // Prevent default browser zoom
+      e.stopPropagation(); // Stop event from reaching other elements
+      
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      
+      const deltaDistance = distance - lastPinchDistance.current;
+      const threshold = 15; // Increased threshold for more stable zooming
+      
+      if (Math.abs(deltaDistance) > threshold) {
+        if (deltaDistance > 0) {
+          // Pinch out - zoom in
+          const nextZoom = getNextZoomLevel(scale);
+          if (nextZoom.zoom !== scale.zoom) {
+            console.log("🔍 Timeline zoom in:", { from: scale.zoom, to: nextZoom.zoom });
+            dispatch(TIMELINE_SCALE_CHANGED, { payload: { scale: nextZoom } });
+          }
+        } else {
+          // Pinch in - zoom out
+          const prevZoom = getPreviousZoomLevel(scale);
+          if (prevZoom.zoom !== scale.zoom) {
+            console.log("🔍 Timeline zoom out:", { from: scale.zoom, to: prevZoom.zoom });
+            dispatch(TIMELINE_SCALE_CHANGED, { payload: { scale: prevZoom } });
+          }
+        }
+        lastPinchDistance.current = distance;
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!isMobile) return;
+    
+    if (e.touches.length < 2 && isZooming) {
+      setIsZooming(false);
+      console.log("🔍 Timeline pinch ended");
+    }
+  };
+
   useEffect(() => {
     if (playerRef?.current) {
       canScrollRef.current = playerRef?.current.isPlaying();
@@ -67,7 +147,110 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
   }, [playerRef?.current?.isPlaying()]);
 
   useEffect(() => {
+    // Skip if currentFrame is NaN to prevent cascade issues
+    if (isNaN(currentFrame)) {
+      console.log("⚠️ Timeline effect skipped - currentFrame is NaN");
+      return;
+    }
+    
     const position = timeMsToUnits((currentFrame / fps) * 1000, scale.zoom);
+    
+    // On mobile, auto-scroll timeline to keep current frame centered
+    if (isMobile) {
+      const scrollableElement = horizontalScrollbarVpRef.current;
+      if (scrollableElement) {
+        const containerWidth = scrollableElement.clientWidth;
+        const centerOffset = containerWidth / 2;
+        
+        // For frame 0, we want the video start to be at center
+        // For other frames, we want to maintain the current frame at center
+        const targetScrollLeft = position - centerOffset + 40; // Add offset for timeline padding
+        
+        console.log("📱 Mobile timeline scroll:", {
+          currentFrame,
+          position,
+          centerOffset,
+          targetScrollLeft,
+          containerWidth,
+          scrollableElement: !!scrollableElement
+        });
+        
+        // Use immediate scroll (not smooth) to avoid lag during playback
+        const finalScrollLeft = Math.max(0, targetScrollLeft);
+        scrollableElement.scrollLeft = finalScrollLeft;
+        
+        // Also update the scrollLeft state for other components
+        setScrollLeft(finalScrollLeft);
+        
+        // Force canvas scroll update and trigger onScrollChange for thumbnails
+        const canvas = canvasRef.current;
+        if (canvas) {
+          canvas.scrollTo({ scrollLeft: finalScrollLeft });
+          // Force immediate thumbnail updates for mobile
+          canvas.forceScrollChange();
+        }
+      }
+      return; // Skip desktop playhead positioning logic
+    }
+    
+    // On desktop, auto-scroll timeline to keep playhead visible when using skip controls
+    if (!isMobile) {
+      const scrollableElement = horizontalScrollbarVpRef.current;
+      if (scrollableElement) {
+        const containerWidth = scrollableElement.clientWidth;
+        const playheadX = position - scrollLeft + 40; // Playhead position relative to visible area
+        const margin = 100; // Increased margin to ensure playhead stays comfortably visible
+        
+        let needsScroll = false;
+        let targetScrollLeft = scrollLeft;
+        
+        // Check if playhead is off-screen to the left or close to left edge
+        if (playheadX < margin) {
+          needsScroll = true;
+          // Center the playhead when scrolling left
+          targetScrollLeft = Math.max(0, position - containerWidth / 2);
+          console.log("📏 Desktop: Playhead off-screen left, centering it");
+        }
+        // Check if playhead is off-screen to the right or close to right edge
+        else if (playheadX > containerWidth - margin) {
+          needsScroll = true;
+          // Center the playhead when scrolling right
+          targetScrollLeft = position - containerWidth / 2;
+          console.log("📏 Desktop: Playhead off-screen right, centering it");
+        }
+        
+        if (needsScroll) {
+          console.log("📏 Desktop timeline auto-scroll:", {
+            currentFrame,
+            position,
+            playheadX,
+            containerWidth,
+            oldScrollLeft: scrollLeft,
+            newScrollLeft: targetScrollLeft,
+            reason: playheadX < margin ? 'left' : 'right'
+          });
+          
+          const finalScrollLeft = Math.max(0, targetScrollLeft);
+          
+          // Update scroll position
+          scrollableElement.scrollLeft = finalScrollLeft;
+          setScrollLeft(finalScrollLeft);
+          
+          // Force canvas scroll update and trigger thumbnail updates
+          const canvas = canvasRef.current;
+          if (canvas) {
+            canvas.scrollTo({ scrollLeft: finalScrollLeft });
+            // Small delay before forcing scroll change to ensure scroll position is updated
+            setTimeout(() => {
+              canvas.forceScrollChange();
+            }, 10);
+          }
+          
+          return; // Skip normal positioning since we scrolled
+        }
+      }
+    }
+    
     const canvasBoudingX =
       canvasElRef.current?.getBoundingClientRect().x! +
       canvasElRef.current?.clientWidth!;
@@ -106,7 +289,7 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     if (!canvasEl || !timelineContainerEl) return;
 
     const containerWidth = timelineContainerEl.clientWidth - 40;
-    const containerHeight = timelineContainerEl.clientHeight - 90;
+    const containerHeight = timelineContainerEl.clientHeight - 60; // Reduced from 90 to 60 to give more space
     const canvas = new CanvasTimeline(canvasEl, {
       width: containerWidth,
       height: containerHeight,
@@ -126,7 +309,7 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
         right: TIMELINE_OFFSET_CANVAS_RIGHT,
       },
       sizesMap: {
-        main: 60, // Increased height for main video track
+        main: 80, // Increased height for main video track to show filmstrip properly
         audio: 36,
         caption: 32,
         text: 32,
@@ -170,6 +353,12 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
 
     const updateTrackItemsMap = stateManager.subscribeToUpdateTrackItem(() => {
       const currentState = stateManager.getState();
+      console.log("🎬 Track items updated (potential split):", {
+        trackItemsCount: Object.keys(currentState.trackItemsMap).length,
+        previousCount: Object.keys(trackItemsMap).length,
+        duration: currentState.duration,
+        timestamp: Date.now()
+      });
       setState({
         duration: currentState.duration,
         trackItemsMap: currentState.trackItemsMap,
@@ -189,6 +378,41 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
         if (newVideoItems.length > 0) {
           const newVideoId = newVideoItems[0].id;
           console.log("🎯 Auto-selecting newly added video:", newVideoId);
+          
+          // On mobile, ensure the timeline starts properly positioned for new videos
+          if (isMobile) {
+            console.log("📱 New video added on mobile, positioning timeline");
+            
+            // Force scroll to ensure video start (frame 0) is centered
+            setTimeout(() => {
+              const scrollableElement = horizontalScrollbarVpRef.current;
+              if (scrollableElement) {
+                const containerWidth = scrollableElement.clientWidth;
+                const centerOffset = containerWidth / 2;
+                
+                // Position 0 should be at center (video start at playhead)
+                const targetScrollLeft = 40 - centerOffset; // Account for timeline padding
+                
+                console.log("📱 Positioning timeline for new video:", {
+                  containerWidth,
+                  centerOffset,
+                  targetScrollLeft
+                });
+                
+                                 const finalScrollLeft = Math.max(0, targetScrollLeft);
+                 scrollableElement.scrollLeft = finalScrollLeft;
+                 setScrollLeft(finalScrollLeft);
+                 
+                 // Also update canvas scroll and force thumbnail updates
+                 const canvas = canvasRef.current;
+                 if (canvas) {
+                   canvas.scrollTo({ scrollLeft: finalScrollLeft });
+                   // Force immediate thumbnail updates for the new video
+                   canvas.forceScrollChange();
+                 }
+              }
+            }, 100); // Small delay to ensure video is fully added
+          }
           
           // Update the state to include the new selection
           setState({
@@ -312,9 +536,12 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     });
 
     // Recalculate timeline duration to include all track items
+    const trackItemDurations = Object.values(trackItemsMap).map((item: ITrackItem) => item.display?.to || 0);
+    console.log("📊 Track item durations:", trackItemDurations);
+    
     const maxEndTime = Math.max(
       duration, // Keep current duration as minimum
-      ...Object.values(trackItemsMap).map((item: ITrackItem) => item.display?.to || 0),
+      ...trackItemDurations,
       1000 // Minimum 1 second
     );
 
@@ -323,6 +550,7 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
       console.log("📏 Updating timeline duration from", duration, "to", maxEndTime);
       setTimeout(() => {
         setState({ duration: maxEndTime });
+        console.log("✅ Duration updated successfully");
       }, 50); // Small delay to avoid conflicts with other state updates
     }
 
@@ -387,12 +615,18 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
     <div
       ref={timelineContainerRef}
       id={"timeline-container"}
-      className="relative h-full w-full overflow-hidden bg-sidebar border-t border-border/50"
+      className="relative h-full w-full overflow-hidden bg-sidebar border-t border-border/50 flex flex-col"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{
+        touchAction: isMobile ? 'pan-x pan-y' : 'auto' // Allow pan but prevent browser zoom
+      }}
     >
       <Header />
       <Ruler onClick={onClickRuler} scrollLeft={scrollLeft} />
       <Playhead scrollLeft={scrollLeft} />
-      <div className="flex">
+      <div className="flex flex-1 min-h-0">
         <div className="relative w-10 flex-none bg-sidebar border-r border-border/30">
           <div className="absolute top-2 left-2 text-xs text-muted-foreground/70 font-medium">
             VIDEO
@@ -410,7 +644,7 @@ const Timeline = ({ stateManager }: { stateManager: StateManager }) => {
             type="always"
             style={{
               position: "absolute",
-              width: "calc(100vw - 40px)",
+              width: isMobile ? "calc(100vw - 40px)" : "calc(100vw - 312px)", // 272px annotation panel + 40px padding
               height: "10px",
             }}
             className="ScrollAreaRootH"

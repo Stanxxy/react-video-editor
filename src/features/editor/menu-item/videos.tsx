@@ -7,14 +7,50 @@ import { generateId } from "@designcombo/timeline";
 import { IVideo } from "@designcombo/types";
 import React from "react";
 import { useIsDraggingOverTimeline } from "../hooks/is-dragging-over-timeline";
+import useStore from "../store/use-store";
 
 export const Videos = () => {
   const isDraggingOverTimeline = useIsDraggingOverTimeline();
 
   const handleAddVideo = (payload: Partial<IVideo>) => {
-    // payload.details.src = "https://cdn.designcombo.dev/videos/timer-20s.mp4";
+    // Get current scene size from store
+    const { size } = useStore.getState();
+    
+    // Calculate video dimensions to fill the scene
+    const sceneWidth = size.width;
+    const sceneHeight = size.height;
+    
+    // For predefined videos, we'll use a default aspect ratio (16:9) if not specified
+    const videoAspectRatio = (payload as any).aspectRatio || 16/9;
+    const sceneAspectRatio = sceneWidth / sceneHeight;
+    
+    let finalWidth, finalHeight;
+    
+    if (videoAspectRatio > sceneAspectRatio) {
+      // Video is wider than scene, fit to width
+      finalWidth = sceneWidth;
+      finalHeight = sceneWidth / videoAspectRatio;
+    } else {
+      // Video is taller than scene, fit to height
+      finalHeight = sceneHeight;
+      finalWidth = sceneHeight * videoAspectRatio;
+    }
+    
+    // Update payload with proper sizing
+    const updatedPayload = {
+      ...payload,
+      details: {
+        ...payload.details,
+        width: finalWidth,
+        height: finalHeight,
+        top: (sceneHeight - finalHeight) / 2, // Center vertically
+        left: (sceneWidth - finalWidth) / 2, // Center horizontally
+      },
+      aspectRatio: videoAspectRatio,
+    };
+    
     dispatch(ADD_VIDEO, {
-      payload,
+      payload: updatedPayload,
       options: {
         resourceId: "main",
         scaleMode: "fit",

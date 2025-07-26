@@ -5,3 +5,6 @@ export const PLAYER_SEEK = `${PLAYER_PREFIX}:seek`;
 export const PLAYER_SEEK_TO = `${PLAYER_PREFIX}:seekTo`;
 export const PLAYER_SEEK_BY = `${PLAYER_PREFIX}:seekBy`;
 export const PLAYER_TOGGLE_PLAY = `${PLAYER_PREFIX}:togglePlay`;
+
+export const ANNOTATION_PREFIX = "annotation";
+export const OPEN_ANNOTATION_PANEL = `${ANNOTATION_PREFIX}:open`;

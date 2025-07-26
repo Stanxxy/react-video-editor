@@ -45,7 +45,13 @@ export function SceneInteractions({
 
   useEffect(() => {
     const updateTargets = (time?: number) => {
-      const currentTime = time || getCurrentTime();
+      let currentTime: number;
+      try {
+        currentTime = time || getCurrentTime();
+      } catch (error) {
+        console.warn("Failed to get current time, using 0:", error);
+        currentTime = 0;
+      }
       const { trackItemsMap } = useStore.getState();
       const targetIds = activeIds.filter((id) => {
         return (

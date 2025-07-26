@@ -4,7 +4,11 @@ import {
   ACTIVE_SPLIT,
   LAYER_DELETE,
   TIMELINE_SCALE_CHANGED,
+  HISTORY_UNDO,
+  HISTORY_REDO,
 } from "@designcombo/state";
+import { OPEN_ANNOTATION_PANEL } from "../constants/events";
+import { Icons } from "@/components/shared/icons";
 import { PLAYER_PAUSE, PLAYER_PLAY, PLAYER_SEEK } from "../constants/events";
 import { frameToTimeString, getCurrentTime, timeToString } from "../utils/time";
 import useStore from "../store/use-store";
@@ -21,6 +25,7 @@ import { useEffect, useState } from "react";
 import useUpdateAnsestors from "../hooks/use-update-ansestors";
 import { ITimelineScaleState } from "@designcombo/types";
 import AudioControls from "./audio-controls";
+import { useScreenSize } from "../../../utils/mobile";
 
 const IconPlayerPlayFilled = ({ size }: { size: number }) => (
   <svg
@@ -82,6 +87,9 @@ const IconPlayerSkipForward = ({ size }: { size: number }) => (
 const Header = () => {
   const [playing, setPlaying] = useState(false);
   const { duration, fps, scale, playerRef, activeIds } = useStore();
+  const screenSize = useScreenSize();
+  
+  const isMobile = screenSize === 'mobile';
 
   useUpdateAnsestors({ playing, playerRef });
 
@@ -92,10 +100,13 @@ const Header = () => {
   };
 
   const doActiveSplit = () => {
+    // Get current time directly from the current frame instead of DOM element
+    const currentTime = (currentFrame / fps) * 1000;
+    
     dispatch(ACTIVE_SPLIT, {
       payload: {},
       options: {
-        time: getCurrentTime(),
+        time: currentTime,
       },
     });
   };
@@ -253,8 +264,11 @@ const Header = () => {
     };
   }, [playerRef]);
 
-  // Keyboard shortcuts for timeline controls
+  // Keyboard shortcuts for timeline controls (disabled on mobile)
   useEffect(() => {
+    // Don't add keyboard listeners on mobile devices
+    if (isMobile) return;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs, textareas, or contenteditable elements
       const target = event.target as HTMLElement;
@@ -349,8 +363,85 @@ const Header = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeIds, playing, scale, doActiveSplit, doActiveDelete, handlePlay, handlePause, handleSkipBackward, handleSkipForward, changeScale, handleSelectClipByNumber]);
+  }, [isMobile, activeIds, playing, scale, doActiveSplit, doActiveDelete, handlePlay, handlePause, handleSkipBackward, handleSkipForward, changeScale, handleSelectClipByNumber]);
 
+  if (isMobile) {
+    // Mobile layout: Header with play controls, undo/redo, and time display
+    return (
+      <div className="flex items-center justify-between bg-sidebar border-b border-border/80 px-3 py-1">
+        {/* Play/Pause button (left) */}
+                  <Button
+            onClick={() => {
+              if (playing) {
+                return handlePause();
+              }
+              handlePlay();
+            }}
+            variant="ghost"
+            size="sm"
+            className="text-white hover:text-white bg-primary/20 hover:bg-primary/30 rounded-full h-10 w-10"
+            title="Play/Pause"
+          >
+          {playing ? (
+            <IconPlayerPauseFilled size={20} />
+          ) : (
+            <IconPlayerPlayFilled size={20} />
+          )}
+        </Button>
+        
+        {/* Center section: Time display */}
+        <div className="flex flex-col items-center gap-1">
+          <div className="text-xs font-light flex items-center gap-1">
+          <div
+                className="font-medium text-zinc-200"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                }}
+                data-current-time={currentFrame / fps}
+                id="video-current-time"
+              >
+                {frameToTimeString({ frame: currentFrame }, { fps })}
+              </div>
+              <span>/</span>
+              <div
+                className="text-muted-foreground"
+                style={{
+                  display: "flex",
+                  justifyContent: "center",
+                }}
+              >
+                {timeToString({ time: duration })}
+              </div>
+          </div>
+        </div>
+        
+        {/* Undo/Redo buttons (right) */}
+        <div className="flex items-center gap-1">
+          <Button
+            onClick={() => dispatch(HISTORY_UNDO)}
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-white"
+            title="Undo"
+          >
+            <Icons.undo width={20} />
+          </Button>
+          <Button
+            onClick={() => dispatch(HISTORY_REDO)}
+            variant="ghost"
+            size="icon"
+            className="text-muted-foreground hover:text-white"
+            title="Redo"
+          >
+            <Icons.redo width={20} />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop layout (original)
   return (
     <div
       style={{

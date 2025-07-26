@@ -3,6 +3,7 @@ export const frameToTimeString = (
   { fps }: { fps: number },
 ): string => {
   // Calculate the total time in seconds
+  console.log("Frame to time string", frame, fps);
   const totalSeconds = frame / fps;
 
   // Calculate hours, minutes, seconds, and milliseconds

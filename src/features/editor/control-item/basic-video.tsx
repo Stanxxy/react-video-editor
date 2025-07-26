@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import useStore from "../store/use-store";
 import { useCurrentPlayerFrame } from "../hooks/use-current-frame";
 import StateManager from "@designcombo/state";
+import { useScreenSize } from "../../../utils/mobile";
 
 interface AnnotationData {
   id: string;
@@ -31,6 +32,9 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
   const { playerRef, fps, activeIds, trackItemsMap } = useStore();
   const currentFrame = useCurrentPlayerFrame(playerRef!);
   const currentTimeMs = (currentFrame / fps) * 1000;
+  const screenSize = useScreenSize();
+  
+  const isMobile = screenSize === 'mobile';
   
   const [annotation, setAnnotation] = useState<AnnotationData>({
     id: "",
@@ -271,17 +275,34 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
     }
   };
 
-  // Keyboard shortcuts for annotation controls
+  // Keyboard shortcuts for annotation controls (disabled on mobile)
   useEffect(() => {
+    // Don't add keyboard listeners on mobile devices
+    if (isMobile) return;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
       const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true';
       const isCtrlOrCmd = event.ctrlKey || event.metaKey;
       
-      // Handle 'Escape' to blur current input - this should work even when inside input
+      // Handle 'Escape' to blur current input and close select dropdowns
       if (event.key === 'Escape') {
         event.preventDefault();
-        // Blur any focused input element
+        
+        // First, check if there are any open Select components (Radix UI creates elements with data-state="open")
+        const openSelectContent = document.querySelector('[data-radix-select-content][data-state="open"]');
+        if (openSelectContent) {
+          // If there's an open select, trigger escape on it to close it
+          const escapeEvent = new KeyboardEvent('keydown', {
+            key: 'Escape',
+            bubbles: true,
+            cancelable: true
+          });
+          openSelectContent.dispatchEvent(escapeEvent);
+          return; // Exit early after handling select
+        }
+        
+        // If no select is open, blur any focused input element
         const activeElement = document.activeElement as HTMLElement;
         if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.contentEditable === 'true')) {
           activeElement.blur();
@@ -331,7 +352,7 @@ const BasicVideo = ({ trackItem, stateManager }: { trackItem: ITrackItem & IVide
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [selectedClip, isAnalyzing, annotation.event, annotation.technique, handleAIAnalysis, handleSaveAnnotation, handleCleanAnnotation]);
+  }, [isMobile, selectedClip, isAnalyzing, annotation.event, annotation.technique, handleAIAnalysis, handleSaveAnnotation, handleCleanAnnotation]);
 
   const formatTime = (timeMs: number) => {
     const totalSeconds = Math.floor(timeMs / 1000);

@@ -31,6 +31,7 @@ export default function Scene({
       ref={containerRef}
     >
       {trackItemIds.length === 0 && <SceneEmpty />}
+
       <Viewer
         ref={viewerRef}
         className="player-container bg-sidebar"

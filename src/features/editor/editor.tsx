@@ -19,6 +19,12 @@ import CropModal from "./crop-modal/crop-modal";
 import useDataState from "./store/use-data-state";
 import { FONTS } from "./data/fonts";
 import FloatingControl from "./control-item/floating-controls/floating-control";
+import { useScreenSize } from "../../utils/mobile";
+import { Button } from "@/components/ui/button";
+import MobileAnnotationPanel from "./control-item/mobile-annotation-panel";
+import { subject, filter } from "@designcombo/events";
+import { OPEN_ANNOTATION_PANEL } from "./constants/events";
+import BottomTab from "./timeline/bottom-tab";
 
 // Initialize with horizontal orientation (YouTube format) by default
 const stateManager = new StateManager({
@@ -30,8 +36,13 @@ const stateManager = new StateManager({
 
 const Editor = () => {
   const [projectName, setProjectName] = useState<string>("Untitled video");
+  const [showRightPanel, setShowRightPanel] = useState(false);
   const timelinePanelRef = useRef<ImperativePanelHandle>(null);
   const { timeline, playerRef, setState, orientation, size } = useStore();
+  const screenSize = useScreenSize();
+  
+  const isMobile = screenSize === 'mobile';
+  const isTablet = screenSize === 'tablet';
 
   useTimelineEvents();
 
@@ -46,6 +57,23 @@ const Editor = () => {
       sizeSubscription.unsubscribe();
     };
   }, [setState]);
+
+  // Listen for annotation panel open events
+  useEffect(() => {
+    const annotationEvents = subject.pipe(
+      filter(({ key }) => key === OPEN_ANNOTATION_PANEL)
+    );
+
+    const annotationSubscription = annotationEvents.subscribe(() => {
+      if (isMobile) {
+        setShowRightPanel(true);
+      }
+    });
+
+    return () => {
+      annotationSubscription.unsubscribe();
+    };
+  }, [isMobile]);
 
   const { setCompactFonts, setFonts } = useDataState();
 
@@ -74,15 +102,22 @@ const Editor = () => {
     const timelineContainer = document.getElementById("timeline-container");
     if (!timelineContainer) return;
 
-    timeline?.resize(
-      {
-        height: timelineContainer.clientHeight - 90,
-        width: timelineContainer.clientWidth - 40,
-      },
-      {
-        force: true,
-      },
-    );
+    // On desktop, account for annotation panel width (272px)
+    const widthOffset = isMobile ? 40 : 40; // Keep same offset since we're using calc() for container width
+    
+    const newDimensions = {
+      height: timelineContainer.clientHeight - 90,
+      width: timelineContainer.clientWidth - widthOffset,
+    };
+    
+    console.log("📏 Timeline resize:", {
+      isMobile,
+      containerWidth: timelineContainer.clientWidth,
+      newWidth: newDimensions.width,
+      annotationPanelAccounted: !isMobile ? "272px subtracted via calc()" : "none"
+    });
+    
+    timeline?.resize(newDimensions, { force: true });
   };
 
   useEffect(() => {
@@ -99,9 +134,22 @@ const Editor = () => {
         stateManager={stateManager}
         setProjectName={setProjectName}
       />
-      <div className="flex flex-1">
-        <ResizablePanelGroup style={{ flex: 1 }} direction="vertical">
-          <ResizablePanel className="relative" defaultSize={70}>
+      <div className={`flex flex-1 ${isMobile ? 'flex-col pb-[60px]' : ''} relative`}>
+
+        <div className={`${isMobile ? 'flex-1' : 'flex-1'}`}>
+          <ResizablePanelGroup 
+            style={{ 
+              flex: 1,
+              // On desktop, account for the annotation panel width
+              width: isMobile ? '100%' : 'calc(100vw - 272px)'
+            }} 
+            direction="vertical"
+          >
+            <ResizablePanel 
+              className="relative" 
+              defaultSize={isMobile ? 65 : 70}
+              minSize={isMobile ? 55 : 50}
+            >
             <FloatingControl />
             <div className="flex h-full flex-1">
               <div
@@ -122,15 +170,60 @@ const Editor = () => {
           </ResizablePanel>
           <ResizableHandle />
           <ResizablePanel
-            className="min-h-[50px]"
+              className={`${isMobile ? 'min-h-[200px]' : 'min-h-[50px]'}`}
             ref={timelinePanelRef}
-            defaultSize={30}
+              defaultSize={isMobile ? 35 : 30}
             onResize={handleTimelineResize}
+              style={isMobile ? { height: '200px', minHeight: '200px', maxHeight: '200px' } : undefined}
           >
             {playerRef && <Timeline stateManager={stateManager} />}
           </ResizablePanel>
         </ResizablePanelGroup>
-        <ControlItem stateManager={stateManager} />
+        </div>
+
+        {/* Mobile Bottom Tab - Fixed at screen bottom, isolated from timeline */}
+        {isMobile && (
+          <div 
+            className="fixed bottom-0 left-0 right-0 z-30 bg-sidebar border-t border-border/50 safe-area-pb"
+            style={{ 
+              height: '60px',
+              touchAction: 'manipulation', // Prevent gesture conflicts
+              pointerEvents: 'auto' // Ensure touch events are handled here
+            }}
+          >
+            <BottomTab />
+          </div>
+        )}
+
+        {/* Control Panel - Desktop: Side panel, Mobile: Hidden by default */}
+        {isMobile ? (
+          // Mobile: Hidden annotation panel by default
+          showRightPanel && (
+            <>
+              {/* Backdrop overlay with blur effect */}
+              <div 
+                className="fixed inset-0 z-35 bg-black/30 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
+                onClick={() => setShowRightPanel(false)}
+              />
+              
+              {/* Annotation panel with solid background */}
+              <div 
+                className="absolute bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur-md border-t-2 border-primary rounded-t-2xl shadow-xl transition-transform duration-300 ease-in-out"
+                style={{ height: '80vh' }}
+              >
+                <MobileAnnotationPanel 
+                  stateManager={stateManager} 
+                  onClose={() => setShowRightPanel(false)}
+                />
+              </div>
+            </>
+          )
+        ) : (
+          // Desktop: Fixed side panel positioned at the right
+          <div className="absolute top-0 right-0 h-full z-20">
+            <ControlItem stateManager={stateManager} />
+          </div>
+        )}
       </div>
     </div>
   );

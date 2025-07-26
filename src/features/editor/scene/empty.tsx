@@ -1,11 +1,13 @@
 import useStore from "../store/use-store";
 import { useEffect, useRef, useState } from "react";
 import { Droppable } from "@/components/ui/droppable";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon, Video } from "lucide-react";
 import { DroppableArea } from "./droppable";
 import { dispatch } from "@designcombo/events";
 import { ADD_VIDEO } from "@designcombo/state";
 import { generateId } from "@designcombo/timeline";
+import { useScreenSize } from "../../../utils/mobile";
+import { Button } from "@/components/ui/button";
 
 const SceneEmpty = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -13,6 +15,24 @@ const SceneEmpty = () => {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [desiredSize, setDesiredSize] = useState({ width: 0, height: 0 });
   const { size } = useStore();
+  const screenSize = useScreenSize();
+  
+  const isMobile = screenSize === 'mobile';
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle mobile file selection
+  const handleMobileFileSelect = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length > 0) {
+      onSelectFiles(files);
+    }
+  };
 
   useEffect(() => {
     const container = containerRef.current;
@@ -105,6 +125,31 @@ const SceneEmpty = () => {
             // Create a unique ID for the video
             const videoId = generateId();
             
+            // Calculate video dimensions to fill the scene
+            const sceneWidth = size.width;
+            const sceneHeight = size.height;
+            const videoAspectRatio = video.videoWidth / video.videoHeight;
+            const sceneAspectRatio = sceneWidth / sceneHeight;
+            
+            let finalWidth, finalHeight;
+            
+            if (videoAspectRatio > sceneAspectRatio) {
+              // Video is wider than scene, fit to width
+              finalWidth = sceneWidth;
+              finalHeight = sceneWidth / videoAspectRatio;
+            } else {
+              // Video is taller than scene, fit to height
+              finalHeight = sceneHeight;
+              finalWidth = sceneHeight * videoAspectRatio;
+            }
+            
+            console.log("📐 Video sizing calculation:", {
+              original: { width: video.videoWidth, height: video.videoHeight },
+              scene: { width: sceneWidth, height: sceneHeight },
+              final: { width: finalWidth, height: finalHeight },
+              aspectRatio: videoAspectRatio
+            });
+            
             // Dispatch action to add video to timeline with proper duration
             dispatch(ADD_VIDEO, {
               payload: {
@@ -112,8 +157,10 @@ const SceneEmpty = () => {
                 type: "video",
                 details: {
                   src: videoUrl,
-                  width: video.videoWidth,
-                  height: video.videoHeight,
+                  width: finalWidth,
+                  height: finalHeight,
+                  top: (sceneHeight - finalHeight) / 2, // Center vertically
+                  left: (sceneWidth - finalWidth) / 2, // Center horizontally
                 },
                 metadata: {
                   previewUrl: thumbnailDataUrl, // Use data URL instead of blob URL
@@ -121,8 +168,8 @@ const SceneEmpty = () => {
                   fileSize: file.size,
                   duration: durationMs,
                   originalFile: file, // Store the original file for MP4Clip
-                  width: video.videoWidth, // Add width to metadata
-                  height: video.videoHeight, // Add height to metadata
+                  width: video.videoWidth, // Add original width to metadata
+                  height: video.videoHeight, // Add original height to metadata
                 },
                 display: {
                   from: 0,
@@ -133,7 +180,7 @@ const SceneEmpty = () => {
                   to: durationMs, // Use actual video duration for trim
                 },
                 duration: durationMs, // Set duration property
-                aspectRatio: video.videoWidth / video.videoHeight, // Add aspect ratio
+                aspectRatio: videoAspectRatio, // Add aspect ratio
               },
               options: {
                 resourceId: "main",
@@ -151,7 +198,44 @@ const SceneEmpty = () => {
 
   return (
     <div ref={containerRef} className="absolute z-50 flex h-full w-full flex-1">
+      {/* Hidden file input for mobile */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*"
+        multiple
+        onChange={handleFileInputChange}
+        className="hidden"
+      />
+      
       {!isLoading ? (
+        isMobile ? (
+          // Mobile-specific interface
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="flex flex-col items-center justify-center gap-6 p-8 text-center">
+              <div className="rounded-full bg-primary p-6">
+                <Video className="h-8 w-8 text-primary-foreground" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-lg font-medium text-foreground">
+                  Add Video
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-sm">
+                  Select a video from your gallery or record a new one
+                </p>
+              </div>
+              <Button 
+                onClick={handleMobileFileSelect}
+                size="lg"
+                className="w-full max-w-xs"
+              >
+                <Video className="mr-2 h-4 w-4" />
+                Choose Video
+              </Button>
+            </div>
+          </div>
+        ) : (
+          // Desktop drag-and-drop interface
         <Droppable
           maxFileCount={4}
           maxSize={100 * 1024 * 1024} // 100MB for video files
@@ -186,6 +270,7 @@ const SceneEmpty = () => {
             </div>
           </DroppableArea>
         </Droppable>
+        )
       ) : (
         <div className="flex flex-1 items-center justify-center bg-background-subtle text-sm text-muted-foreground">
           Loading...

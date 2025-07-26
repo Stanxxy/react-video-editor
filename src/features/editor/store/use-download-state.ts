@@ -39,18 +39,20 @@ interface AnnotationData {
 interface DownloadState {
   projectId: string;
   exporting: boolean;
-  exportType: "json" | "mp4";
+  exportType: "json" | "excel";
   progress: number;
   output?: Output;
   payload?: IDesign;
   displayProgressModal: boolean;
+  error?: string;
   actions: {
     setProjectId: (projectId: string) => void;
     setExporting: (exporting: boolean) => void;
-    setExportType: (exportType: "json" | "mp4") => void;
+    setExportType: (exportType: "json" | "excel") => void;
     setProgress: (progress: number) => void;
     setState: (state: Partial<DownloadState>) => void;
     setOutput: (output: Output) => void;
+    setError: (error: string | undefined) => void;
     startExport: () => void;
     setDisplayProgressModal: (displayProgressModal: boolean) => void;
   };
@@ -89,10 +91,70 @@ const downloadJSON = (data: any, filename: string) => {
   return url;
 };
 
+// Helper function to download Excel (CSV format for broad compatibility)
+const downloadExcel = (annotations: AnnotationData[], filename: string): string => {
+  // Create CSV headers
+  const headers = [
+    'ID',
+    'Clip ID', 
+    'Event Type',
+    'Technique',
+    'Player 1',
+    'Player 2',
+    'Result 1',
+    'Result 2',
+    'Start Time (ms)',
+    'End Time (ms)',
+    'Duration (s)',
+    'Notes',
+    'Created At'
+  ];
+  
+  // Convert annotations to CSV rows
+  const rows = annotations.map(annotation => [
+    annotation.id,
+    annotation.clipId,
+    annotation.event,
+    annotation.technique,
+    annotation.player1,
+    annotation.player2,
+    annotation.result1,
+    annotation.result2,
+    annotation.startTime,
+    annotation.endTime,
+    Math.round((annotation.endTime - annotation.startTime) / 1000),
+    `"${annotation.notes.replace(/"/g, '""')}"`, // Escape quotes in notes
+    annotation.createdAt.toISOString()
+  ]);
+  
+  // Combine headers and rows
+  const csvContent = [headers, ...rows]
+    .map(row => row.join(','))
+    .join('\n');
+  
+  // Create and download the file
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  // Clean up the URL object after a delay
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 100);
+  
+  return url;
+};
+
 export const useDownloadState = create<DownloadState>((set, get) => ({
   projectId: "",
   exporting: false,
-  exportType: "mp4",
+  exportType: "excel",
   progress: 0,
   displayProgressModal: false,
   actions: {
@@ -102,12 +164,13 @@ export const useDownloadState = create<DownloadState>((set, get) => ({
     setProgress: (progress) => set({ progress }),
     setState: (state) => set({ ...state }),
     setOutput: (output) => set({ output }),
+    setError: (error) => set({ error }),
     setDisplayProgressModal: (displayProgressModal) =>
       set({ displayProgressModal }),
     startExport: async () => {
       try {
-        // Set exporting to true at the start
-        set({ exporting: true, displayProgressModal: true });
+        // Set exporting to true at the start and clear any previous errors
+        set({ exporting: true, displayProgressModal: true, error: undefined });
 
         const { exportType } = get();
 
@@ -175,58 +238,65 @@ export const useDownloadState = create<DownloadState>((set, get) => ({
           });
           
         } else {
-          // Handle MP4 export (original code)
-        const { payload } = get();
-
-        if (!payload) throw new Error("Payload is not defined");
-
-        // Step 1: POST request to start rendering
-        const response = await fetch("/api/render", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            design: payload,
-            options: {
-              fps: 30,
-              size: payload.size,
-              format: "mp4",
-            },
-          }),
-        });
-
-        if (!response.ok) throw new Error("Failed to submit export request.");
-
-        const jobInfo = await response.json();
-        const videoId = jobInfo.video.id;
-
-        // Step 2 & 3: Polling for status updates
-        const checkStatus = async () => {
-          const statusResponse = await fetch(
-            `/api/render?id=${videoId}&type=VIDEO_RENDERING`,
-          );
-
-          if (!statusResponse.ok)
-            throw new Error("Failed to fetch export status.");
-
-          const statusInfo = await statusResponse.json();
-          const { status, progress, url } = statusInfo.video;
-
-          set({ progress });
-
-          if (status === "COMPLETED") {
-            set({ exporting: false, output: { url, type: get().exportType } });
-          } else if (status === "PENDING") {
-            setTimeout(checkStatus, 2500);
+          // Handle Excel export for annotations
+          
+          // Simulate progress for better UX
+          set({ progress: 25 });
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Get annotations from localStorage
+          const annotationsData = localStorage.getItem('combat-annotations');
+          let annotations: AnnotationData[] = [];
+          
+          if (annotationsData) {
+            try {
+              const parsedAnnotations = JSON.parse(annotationsData);
+              // Convert createdAt strings back to Date objects
+              annotations = parsedAnnotations.map((ann: any) => ({
+                ...ann,
+                createdAt: new Date(ann.createdAt)
+              }));
+            } catch (error) {
+              console.error('Error parsing annotations:', error);
+            }
           }
-        };
+          
+          set({ progress: 50 });
+          await new Promise(resolve => setTimeout(resolve, 500));
 
-        checkStatus();
+          if (annotations.length === 0) {
+            throw new Error("No annotations found to export");
+          }
+          
+          set({ progress: 75 });
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          // Generate filename with timestamp
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+          const filename = `combat-annotations-${timestamp}.csv`;
+          
+          // Download the Excel file
+          const url = downloadExcel(annotations, filename);
+          
+          set({ progress: 100 });
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Set completion state
+          set({ 
+            exporting: false, 
+            output: { 
+              url: url, 
+              type: 'excel'
+          }
+          });
         }
       } catch (error) {
         console.error(error);
-        set({ exporting: false });
+        set({ 
+          exporting: false, 
+          error: error instanceof Error ? error.message : 'An unexpected error occurred',
+          progress: 0 
+        });
       }
     },
   },

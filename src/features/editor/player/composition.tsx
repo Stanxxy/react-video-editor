@@ -22,6 +22,16 @@ const Composition = () => {
     size,
     transitionsMap,
   } = useStore();
+  
+  // Log composition rebuilds that might affect player frame
+  console.log("🎬 Composition rebuild:", {
+    trackItemIds: trackItemIds.length,
+    trackItemsMapKeys: Object.keys(trackItemsMap).length,
+    detailsMapKeys: Object.keys(trackItemDetailsMap).length,
+    transitionsMapKeys: Object.keys(transitionsMap).length,
+    fps,
+    timestamp: Date.now()
+  });
   const mergedTrackItemsDeatilsMap = merge(trackItemsMap, trackItemDetailsMap);
   const groupedItems = groupTrackItems({
     trackItemIds,
@@ -141,11 +151,16 @@ const Composition = () => {
     return () => subscription.unsubscribe();
   }, [editableTextId]);
 
+  const videoItems = Object.values(mergedTrackItemsDeatilsMap).filter(item => item.type === 'video').length;
+  
+
+
   return (
     <>
       {groupedItems.map((group, index) => {
         if (group.length === 1) {
           const item = mergedTrackItemsDeatilsMap[group[0].id];
+
           return SequenceItem[item.type](item, {
             fps,
             handleTextChange,

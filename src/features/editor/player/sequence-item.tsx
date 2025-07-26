@@ -126,6 +126,22 @@ export const SequenceItem: Record<
       height: item.details.height,
     };
 
+    // Ensure video fills the container properly
+    const videoStyles = {
+      width: '100%',
+      height: '100%',
+      objectFit: 'cover' as const,
+      position: 'absolute' as const,
+      top: 0,
+      left: 0,
+      minWidth: '100%',
+      minHeight: '100%',
+      maxWidth: '100%',
+      maxHeight: '100%',
+    };
+
+    // Video rendering styles for proper display
+
     return (
       <Sequence
         key={item.id}
@@ -147,13 +163,14 @@ export const SequenceItem: Record<
             animationOut={animationOut}
             durationInFrames={durationInFrames}
           >
-            <div style={calculateMediaStyles(details, crop)}>
+            <div style={videoStyles}>
               <OffthreadVideo
                 startFrom={(item.trim?.from! / 1000) * fps}
                 endAt={(item.trim?.to! / 1000) * fps}
                 playbackRate={playbackRate}
                 src={details.src}
                 volume={details.volume || 0 / 100}
+                style={videoStyles}
               />
             </div>
           </Animated>

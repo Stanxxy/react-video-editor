@@ -18,12 +18,16 @@ import useLayoutStore from "../store/use-layout-store";
 import BasicCaption from "./basic-caption";
 import { LassoSelect } from "lucide-react";
 import StateManager from "@designcombo/state";
+import { useScreenSize } from "../../../utils/mobile";
 
 export const ControlItem = ({ stateManager }: { stateManager: StateManager }) => {
   const { activeIds, trackItemsMap, trackItemDetailsMap, transitionsMap } =
     useStore();
   const [trackItem, setTrackItem] = useState<ITrackItem | null>(null);
   const { setTrackItem: setLayoutTrackItem } = useLayoutStore();
+  const screenSize = useScreenSize();
+  
+  const isMobile = screenSize === 'mobile';
 
   useEffect(() => {
     if (activeIds.length === 1) {
@@ -76,7 +80,11 @@ export const ControlItem = ({ stateManager }: { stateManager: StateManager }) =>
 };
 
   return (
-    <div className="flex w-[272px] flex-none border-l border-border/80 bg-sidebar">
+    <div className={`flex flex-none bg-sidebar ${
+      isMobile 
+        ? 'w-full h-full' 
+        : 'w-[272px] h-full border-l border-border/80'
+    }`}>
       {renderActiveControlItem()}
     </div>
   );

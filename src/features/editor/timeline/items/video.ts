@@ -16,6 +16,7 @@ import {
 import { getFileFromUrl } from "../../utils/file";
 import { type MP4Clip } from "@designcombo/frames";
 import { createMediaControls } from "../controls";
+import { generateVideoTimelineThumbnails, getThumbnailService } from "../../utils/thumbnail-service";
 
 const EMPTY_FILMSTRIP: Filmstrip = {
   offset: 0,
@@ -58,13 +59,15 @@ class Video extends VideoBase {
   public thumbnailsList: { url: string; ts: number }[] = [];
   public isFetchingThumbnails = false;
   public thumbnailCache = new ThumbnailCache();
+  private hasDefaultPattern = false;
+  private isCreatingPattern = false;
 
   public currentFilmstrip: Filmstrip = EMPTY_FILMSTRIP;
   public nextFilmstrip: Filmstrip = { ...EMPTY_FILMSTRIP, segmentIndex: 0 };
   public loadingFilmstrip: Filmstrip = EMPTY_FILMSTRIP;
 
-  private offscreenCanvas: OffscreenCanvas | null = null;
-  private offscreenCtx: OffscreenCanvasRenderingContext2D | null = null;
+  private offscreenCanvas: OffscreenCanvas | HTMLCanvasElement | null = null;
+  private offscreenCtx: OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null = null;
 
   private isDirty: boolean = true;
 
@@ -105,19 +108,32 @@ class Video extends VideoBase {
   }
 
   private initOffscreenCanvas() {
-    if (!this.offscreenCanvas) {
-      this.offscreenCanvas = new OffscreenCanvas(this.width, this.height);
-      this.offscreenCtx = this.offscreenCanvas.getContext("2d");
-    }
+    // Check if OffscreenCanvas is supported (mainly for mobile compatibility)
+    if (typeof OffscreenCanvas !== 'undefined') {
+      if (!this.offscreenCanvas) {
+        this.offscreenCanvas = new OffscreenCanvas(this.width, this.height);
+        this.offscreenCtx = this.offscreenCanvas.getContext("2d");
+      }
 
-    // Resize if dimensions changed
-    if (
-      this.offscreenCanvas.width !== this.width ||
-      this.offscreenCanvas.height !== this.height
-    ) {
-      this.offscreenCanvas.width = this.width;
-      this.offscreenCanvas.height = this.height;
-      this.isDirty = true;
+      // Resize if dimensions changed
+      if (
+        this.offscreenCanvas.width !== this.width ||
+        this.offscreenCanvas.height !== this.height
+      ) {
+        this.offscreenCanvas.width = this.width;
+        this.offscreenCanvas.height = this.height;
+        this.isDirty = true;
+      }
+    } else {
+      // Fallback for mobile browsers that don't support OffscreenCanvas
+      console.log("📱 OffscreenCanvas not supported, using regular canvas");
+      if (!this.offscreenCanvas) {
+        const fallbackCanvas = document.createElement('canvas');
+        fallbackCanvas.width = this.width;
+        fallbackCanvas.height = this.height;
+        this.offscreenCanvas = fallbackCanvas as any;
+        this.offscreenCtx = fallbackCanvas.getContext("2d");
+      }
     }
   }
 
@@ -154,16 +170,26 @@ class Video extends VideoBase {
   }
 
   public async initialize() {
-    await this.loadFallbackThumbnail();
-
+    this.previewUrl = (this.metadata as any)?.previewUrl || "";
+    this.initOffscreenCanvas();
     this.initDimensions();
-    this.onScrollChange({ scrollLeft: 0 });
-
-    this.canvas?.requestRenderAll();
-
+    
+    // Load fallback thumbnail first
+    await this.loadFallbackThumbnail();
+    
+    // Create fallback pattern
     this.createFallbackPattern();
+    
+    // Then prepare assets (which may or may not create MP4Clip)
     await this.prepareAssets();
-
+    
+    // Ensure we have a fallback pattern even if MP4Clip fails
+    if (!this.thumbnailCache.getThumbnail("fallback")) {
+      console.log("🔄 No fallback thumbnail after initialization, creating default pattern");
+      this.createDefaultPattern();
+    }
+    
+    // Initialize scroll position
     this.onScrollChange({ scrollLeft: 0 });
   }
 
@@ -172,6 +198,22 @@ class Video extends VideoBase {
 
     console.log("🎬 Video.prepareAssets() - Starting asset preparation for:", this.src);
     console.log("📊 Metadata available:", this.metadata);
+
+    // Check if we're on mobile and potentially skip MP4Clip for performance
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobile) {
+      console.log("📱 Mobile device detected, using optimized thumbnail approach");
+      // On mobile, we'll still create a basic clip for playback but skip heavy thumbnail processing
+      // This ensures the video can be played even if thumbnails aren't generated
+    }
+
+    // Check if OPFS is supported before trying to use MP4Clip
+    const isOPFSSupported = 'storage' in navigator && 'getDirectory' in navigator.storage;
+    if (!isOPFSSupported) {
+      console.log("⚠️ OPFS not supported, skipping MP4Clip thumbnail generation");
+      return;
+    }
 
     try {
       const { MP4Clip } = await import("@designcombo/frames");
@@ -248,7 +290,7 @@ class Video extends VideoBase {
   // load fallback thumbnail, resize it and cache it
   private async loadFallbackThumbnail() {
     const fallbackThumbnail = this.previewUrl;
-    console.log("🖼️  loadFallbackThumbnail() called with previewUrl:", fallbackThumbnail);
+    console.log("🖼️  loadFallbackThumbnail() called with previewUrl:", fallbackThumbnail ? "URL provided" : "No URL");
     
     if (!fallbackThumbnail) {
       console.log("❌ No fallback thumbnail URL provided");
@@ -258,48 +300,57 @@ class Video extends VideoBase {
       return;
     }
 
+    // Validate the data URL format
+    if (fallbackThumbnail.startsWith('data:image/')) {
+      console.log("✅ Valid data URL format detected");
+    } else {
+      console.log("⚠️ Invalid data URL format, using default aspect ratio");
+      this.setDefaultAspectRatio();
+      return;
+    }
+
     return new Promise<void>((resolve) => {
       const img = new Image();
-      img.crossOrigin = "anonymous";
       
-      // For blob URLs, we need to be more careful about timing
-      if (fallbackThumbnail.startsWith('blob:')) {
-        // Create a canvas to immediately capture the blob data
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d')!;
+      // For mobile compatibility, we don't set crossOrigin for blob URLs
+      if (!fallbackThumbnail.startsWith('blob:')) {
+        img.crossOrigin = "anonymous";
+      }
+      
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      img.onload = () => {
+        console.log("✅ Fallback thumbnail loaded successfully:", img.width, "x", img.height);
         
-        img.onload = () => {
-          console.log("✅ Fallback thumbnail loaded successfully:", img.width, "x", img.height);
+        try {
+          // Calculate aspect ratio and dimensions
+          const aspectRatio = img.width / img.height;
+          const targetHeight = 40;
+          const targetWidth = Math.round(targetHeight * aspectRatio);
           
-          // Immediately draw to canvas and convert to data URL to avoid blob URL issues
-          tempCanvas.width = img.width;
-          tempCanvas.height = img.height;
-          tempCtx.drawImage(img, 0, 0);
+          console.log("🎨 Resizing thumbnail to:", targetWidth, "x", targetHeight);
           
-          // Convert to data URL for stable reference
-          const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+          // Create canvas for resizing
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
           
-          // Now create the final resized thumbnail
-          const finalImg = new Image();
-          finalImg.onload = () => {
-            // Calculate aspect ratio and dimensions
-            const aspectRatio = img.width / img.height;
-            const targetHeight = 40;
-            const targetWidth = Math.round(targetHeight * aspectRatio);
-            
-            console.log("🎨 Resizing thumbnail to:", targetWidth, "x", targetHeight);
-            
-            // Create final resized canvas
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d')!;
-            canvas.height = targetHeight;
-            canvas.width = targetWidth;
-            ctx.drawImage(finalImg, 0, 0, targetWidth, targetHeight);
-
-            // Create final image from resized canvas
-            const resizedImg = new Image();
-            resizedImg.src = canvas.toDataURL('image/jpeg', 0.8);
-            
+          if (!ctx) {
+            console.error("❌ Failed to get canvas context");
+            this.setDefaultAspectRatio();
+            resolve();
+            return;
+          }
+          
+          canvas.height = targetHeight;
+          canvas.width = targetWidth;
+          
+          // Draw and resize image
+          ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+          
+          // Create final image
+          const resizedImg = new Image();
+          
+          resizedImg.onload = () => {
             // Update aspect ratio and cache the resized image
             this.aspectRatio = aspectRatio;
             this.thumbnailWidth = targetWidth;
@@ -309,63 +360,45 @@ class Video extends VideoBase {
             resolve();
           };
           
-          finalImg.onerror = () => {
-            console.error("❌ Failed to load data URL image");
+          resizedImg.onerror = () => {
+            console.warn("⚠️ Failed to load resized image, using default");
             this.setDefaultAspectRatio();
             resolve();
           };
           
-          finalImg.src = dataUrl;
-        };
-        
-        img.onerror = (error) => {
-          console.error("❌ Failed to load fallback thumbnail from blob:", error);
+          // Use lower quality on mobile to improve performance and avoid base64 corruption
+          const quality = isMobile ? 0.5 : 0.7;
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          
+          // Validate data URL before using it
+          if (dataUrl && dataUrl.startsWith('data:image/jpeg;base64,')) {
+            resizedImg.src = dataUrl;
+          } else {
+            console.warn("⚠️ Invalid data URL generated, using default");
+            this.setDefaultAspectRatio();
+            resolve();
+          }
+          
+        } catch (error) {
+          console.warn("⚠️ Error processing thumbnail, using default:", error);
           this.setDefaultAspectRatio();
           resolve();
-        };
-        
-      } else {
-        // For regular URLs, use the original approach
-      img.onload = () => {
-          console.log("✅ Fallback thumbnail loaded successfully:", img.width, "x", img.height);
-          
-        // Create a temporary canvas to resize the image
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d')!;
-
-        // Calculate new width maintaining aspect ratio
-        const aspectRatio = img.width / img.height;
-        const targetHeight = 40;
-        const targetWidth = Math.round(targetHeight * aspectRatio);
-          
-          console.log("🎨 Resizing thumbnail to:", targetWidth, "x", targetHeight);
-          
-        // Set canvas size and draw resized image
-        canvas.height = targetHeight;
-        canvas.width = targetWidth;
-        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-
-        // Create new image from resized canvas
-        const resizedImg = new Image();
-        resizedImg.src = canvas.toDataURL();
-          
-        // Update aspect ratio and cache the resized image
-        this.aspectRatio = aspectRatio;
-        this.thumbnailWidth = targetWidth;
-        this.thumbnailCache.setThumbnail("fallback", resizedImg);
-          
-          console.log("✅ Fallback thumbnail cached successfully with aspectRatio:", aspectRatio);
-          resolve();
-        };
-        
-        img.onerror = (error) => {
-          console.error("❌ Failed to load fallback thumbnail:", error);
-          this.setDefaultAspectRatio();
+        }
+      };
+      
+      img.onerror = (error) => {
+        console.warn("⚠️ Fallback thumbnail failed to load, using default aspect ratio");
+        this.setDefaultAspectRatio();
         resolve();
       };
+      
+      // Add timestamp to prevent caching issues, but not for blob URLs
+      if (fallbackThumbnail.startsWith('blob:')) {
+        img.src = fallbackThumbnail;
+      } else {
+        img.src = fallbackThumbnail + (fallbackThumbnail.includes('?') ? '&' : '?') + "t=" + Date.now();
       }
       
-      img.src = fallbackThumbnail + (fallbackThumbnail.includes('?') ? '&' : '?') + "t=" + Date.now();
       console.log("📥 Loading fallback thumbnail from:", img.src);
     });
   }
@@ -416,27 +449,19 @@ class Video extends VideoBase {
 
   private createFallbackPattern() {
     const canvas = this.canvas;
-    console.log("🎨 createFallbackPattern() called, canvas exists:", !!canvas);
     
-    if (!canvas) {
-      console.log("❌ No canvas available for pattern creation");
+    if (!canvas || this.isCreatingPattern || this.hasDefaultPattern) {
       return;
     }
+
+    this.isCreatingPattern = true;
 
     const canvasWidth = this.canvas!.width;
     const maxPatternSize = 12000;
     const fallbackSource = this.thumbnailCache.getThumbnail("fallback");
 
-    console.log("📊 Pattern creation params:", {
-      canvasWidth,
-      maxPatternSize,
-      fallbackSourceExists: !!fallbackSource,
-      thumbnailWidth: this.thumbnailWidth,
-      thumbnailHeight: this.thumbnailHeight
-    });
-
     if (!fallbackSource) {
-      console.log("❌ No fallback source found in cache");
+      this.createDefaultPattern();
       return;
     }
 
@@ -482,16 +507,58 @@ class Video extends VideoBase {
       offsetX: 0,
     });
 
-    console.log("✅ Pattern created successfully, applying to video item");
     this.set("fill", fillPattern);
     this.canvas?.requestRenderAll();
-    console.log("🎨 Canvas render requested after pattern application");
+    this.hasDefaultPattern = true;
+    this.isCreatingPattern = false;
+  }
+
+  private createDefaultPattern() {
+    if (this.hasDefaultPattern) return;
+    
+    // Create a simple colored rectangle pattern as fallback
+    const offCanvas = document.createElement("canvas");
+    offCanvas.height = this.thumbnailHeight;
+    offCanvas.width = this.thumbnailWidth || 100; // Use default width if not set
+    
+    const context = offCanvas.getContext("2d")!;
+    
+    // Fill with a gradient pattern
+    const gradient = context.createLinearGradient(0, 0, offCanvas.width, 0);
+    gradient.addColorStop(0, "#3b82f6");
+    gradient.addColorStop(0.5, "#8b5cf6");
+    gradient.addColorStop(1, "#3b82f6");
+    
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, offCanvas.width, offCanvas.height);
+    
+    // Add some text
+    context.fillStyle = "white";
+    context.font = "12px Arial";
+    context.textAlign = "center";
+    context.fillText("VIDEO", offCanvas.width / 2, offCanvas.height / 2 + 4);
+    
+    // Create the pattern and apply it
+    const fillPattern = new Pattern({
+      source: offCanvas,
+      repeat: "no-repeat",
+      offsetX: 0,
+    });
+    
+    this.set("fill", fillPattern);
+    this.canvas?.requestRenderAll();
+    this.hasDefaultPattern = true;
+    this.isCreatingPattern = false;
   }
   public async loadAndRenderThumbnails() {
-    console.log("🖼️  loadAndRenderThumbnails() called, isFetchingThumbnails:", this.isFetchingThumbnails, "clip exists:", !!this.clip);
+    if (this.isFetchingThumbnails) {
+      return;
+    }
     
-    if (this.isFetchingThumbnails || !this.clip) {
-      console.log("❌ Skipping thumbnail loading - already fetching or no clip available");
+    // If no clip is available (e.g., on mobile), try the new thumbnail service
+    if (!this.clip) {
+      console.log("📱 No MP4Clip available, attempting thumbnail service generation");
+      await this.tryThumbnailService();
       return;
     }
     
@@ -499,53 +566,134 @@ class Video extends VideoBase {
     this.loadingFilmstrip = { ...this.nextFilmstrip };
     this.isFetchingThumbnails = true;
 
-    console.log("📊 Loading filmstrip:", this.loadingFilmstrip);
-
     // Calculate dimensions and offsets
     const { startTime, thumbnailsCount } = this.loadingFilmstrip;
 
     // Generate required timestamps
     const timestamps = this.generateTimestamps(startTime, thumbnailsCount);
-    console.log("⏰ Generated timestamps:", timestamps);
 
     try {
-    // Match and prepare thumbnails
-    let thumbnailsArr = await this.clip.thumbnailsList(this.thumbnailWidth, {
-      timestamps: timestamps.map((timestamp) => timestamp * 1e6),
-    });
+      // Match and prepare thumbnails
+      let thumbnailsArr = await this.clip.thumbnailsList(this.thumbnailWidth, {
+        timestamps: timestamps.map((timestamp) => timestamp * 1e6),
+      });
 
-      console.log("✅ MP4Clip.thumbnailsList returned:", thumbnailsArr.length, "thumbnails");
+      const updatedThumbnails = thumbnailsArr.map((thumbnail) => {
+        return {
+          ts: Math.round(thumbnail.ts / 1e6),
+          img: thumbnail.img,
+        };
+      });
 
-    const updatedThumbnails = thumbnailsArr.map((thumbnail) => {
-      return {
-        ts: Math.round(thumbnail.ts / 1e6),
-        img: thumbnail.img,
-      };
-    });
+      // Load all thumbnails in parallel
+      await this.loadThumbnailBatch(updatedThumbnails);
 
-      console.log("🔄 Processing", updatedThumbnails.length, "thumbnails");
-
-    // Load all thumbnails in parallel
-    await this.loadThumbnailBatch(updatedThumbnails);
-
-      console.log("✅ Thumbnail batch loaded successfully");
-
-    this.isDirty = true; // Mark as dirty after preparing new thumbnails
-    // this.isFallbackDirty = true;
-    this.isFetchingThumbnails = false;
-
-    this.currentFilmstrip = { ...this.loadingFilmstrip };
-    
-    console.log("✅ Updated currentFilmstrip:", this.currentFilmstrip);
-
-    requestAnimationFrame(() => {
-        console.log("🎨 Requesting canvas re-render with filmstrip:", this.currentFilmstrip);
-      this.canvas?.requestRenderAll();
-    });
-    } catch (error) {
-      console.error("❌ Error in loadAndRenderThumbnails:", error);
+      this.isDirty = true; // Mark as dirty after preparing new thumbnails
       this.isFetchingThumbnails = false;
+
+      // Update currentFilmstrip with the successfully loaded filmstrip
+      this.currentFilmstrip = { ...this.loadingFilmstrip };
+
+      requestAnimationFrame(() => {
+        this.canvas?.requestRenderAll();
+      });
+        } catch (error) {
+      console.warn("⚠️ Error in loadAndRenderThumbnails, using fallback:", error);
+      this.isFetchingThumbnails = false;
+
+      // On error, still try to create a fallback pattern
+      this.createFallbackPattern();
+      this.isDirty = true;
+      this.canvas?.requestRenderAll();
     }
+  }
+
+  private async tryThumbnailService() {
+    try {
+      const { startTime, thumbnailsCount } = this.nextFilmstrip;
+      
+      if (!thumbnailsCount || thumbnailsCount <= 0) {
+        this.createFallbackPattern();
+        return;
+      }
+
+      // Generate timestamps for the current filmstrip segment
+      const timestamps = this.generateTimestamps(startTime, thumbnailsCount);
+      
+      if (timestamps.length === 0) {
+        this.createFallbackPattern();
+        return;
+      }
+
+      console.log("🎬 Requesting thumbnails via thumbnail service:", {
+        src: this.src,
+        timestamps: timestamps.length,
+        startTime,
+        thumbnailsCount
+      });
+
+      // Use the thumbnail service to generate thumbnails
+      const thumbnailResults = await generateVideoTimelineThumbnails(
+        this.src,
+        this.duration / 1000, // Convert to seconds
+        timestamps.length,
+        {
+          thumbnailWidth: this.thumbnailWidth,
+          thumbnailHeight: this.thumbnailHeight,
+          serverEndpoint: '/api/thumbnails', // Will fallback to canvas if server unavailable
+          fallbackToCanvas: true,
+          enableCaching: true
+        }
+      );
+
+      if (thumbnailResults.length > 0) {
+        console.log("✅ Thumbnail service generated", thumbnailResults.length, "thumbnails");
+        
+        // Convert thumbnail service results to the format expected by our cache
+        const convertedThumbnails = thumbnailResults.map((result, index) => ({
+          ts: timestamps[index] || result.timestamp,
+          dataUrl: result.dataUrl
+        }));
+
+        await this.loadThumbnailServiceBatch(convertedThumbnails);
+        
+        // Update filmstrip state
+        this.currentFilmstrip = { ...this.nextFilmstrip };
+        this.isDirty = true;
+        this.canvas?.requestRenderAll();
+        
+        console.log("✅ Thumbnail service thumbnails loaded successfully");
+      } else {
+        throw new Error("No thumbnails generated by service");
+      }
+      
+    } catch (error) {
+      console.warn("⚠️ Thumbnail service failed, falling back to pattern:", error);
+      this.createFallbackPattern();
+      this.isDirty = true;
+      this.canvas?.requestRenderAll();
+    }
+  }
+
+  private async loadThumbnailServiceBatch(thumbnails: { ts: number; dataUrl: string }[]) {
+    const loadPromises = thumbnails.map(async (thumbnail) => {
+      if (this.thumbnailCache.getThumbnail(thumbnail.ts)) return;
+
+      return new Promise<void>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          this.thumbnailCache.setThumbnail(thumbnail.ts, img);
+          resolve();
+        };
+        img.onerror = () => {
+          console.warn("Failed to load thumbnail from data URL");
+          reject();
+        };
+        img.src = thumbnail.dataUrl;
+      });
+    });
+
+    await Promise.allSettled(loadPromises); // Use allSettled to continue even if some fail
   }
 
   private async loadThumbnailBatch(thumbnails: { ts: number; img: Blob }[]) {
@@ -608,20 +756,27 @@ class Video extends VideoBase {
 
   public renderToOffscreen(force?: boolean) {
     if (!this.offscreenCtx) {
-      console.log("❌ No offscreen context available");
       return;
     }
     
     if (!this.isDirty && !force) {
-      console.log("🚫 Render skipped - not dirty and not forced");
       return;
     }
 
-    console.log("🎨 renderToOffscreen() called, filmstrip:", this.currentFilmstrip);
-    
     // Check if filmstrip is valid
     if (!this.currentFilmstrip.thumbnailsCount || this.currentFilmstrip.thumbnailsCount <= 0) {
-      console.log("⚠️  Invalid filmstrip data - thumbnailsCount is 0, skipping render");
+      if (!this.hasDefaultPattern && !this.isCreatingPattern) {
+        this.createFallbackPattern();
+      }
+      return;
+    }
+
+    // Ensure we have a fallback thumbnail before rendering
+    if (!this.thumbnailCache.getThumbnail("fallback") && !this.hasDefaultPattern) {
+      this.loadFallbackThumbnail().then(() => {
+        // Retry rendering after fallback thumbnail is loaded
+        this.renderToOffscreen(force);
+      });
       return;
     }
 
@@ -653,15 +808,6 @@ class Video extends VideoBase {
     ctx.roundRect(0, 0, this.width, this.height, this.rx);
     ctx.clip();
     
-    console.log("📐 Render parameters:", {
-      thumbnailsCount,
-      thumbnailWidth,
-      thumbnailHeight,
-      startTime,
-      offset,
-      trimFromSize
-    });
-    
     let renderedCount = 0;
     let fallbackCount = 0;
     
@@ -684,12 +830,7 @@ class Video extends VideoBase {
       }
     }
 
-    console.log("🖼️  Rendered thumbnails:", {
-      total: thumbnailsCount,
-      rendered: renderedCount,
-      fallback: fallbackCount,
-      missing: thumbnailsCount - renderedCount - fallbackCount
-    });
+    // Thumbnails rendered successfully
 
     this.isDirty = false;
   }

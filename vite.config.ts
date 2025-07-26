@@ -9,4 +9,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    host: '0.0.0.0', // Allow access from any IP address
+    port: 5173,      // Default Vite port
+    strictPort: true, // Fail if port is already in use
+  },
 });

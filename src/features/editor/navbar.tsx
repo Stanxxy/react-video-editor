@@ -24,6 +24,7 @@ import DownloadProgressModal from "./download-progress-modal";
 import AutosizeInput from "@/components/ui/autosize-input";
 import useStore from "./store/use-store";
 import { debounce } from "lodash";
+import { useScreenSize } from "../../utils/mobile";
 
 export default function Navbar({
   stateManager,
@@ -37,9 +38,11 @@ export default function Navbar({
 }) {
   const [title, setTitle] = useState(projectName);
   const { orientation, setOrientation, playerRef, trackItemsMap } = useStore();
+  const screenSize = useScreenSize();
 
   // Check if any videos are present in the scene
   const hasVideos = Object.values(trackItemsMap).some(item => item.type === 'video');
+  const isMobile = screenSize === 'mobile';
 
   const handleUndo = () => {
     dispatch(HISTORY_UNDO);
@@ -192,8 +195,11 @@ export default function Navbar({
     setTitle(e.target.value);
   };
 
-  // Keyboard shortcuts for navbar controls
+  // Keyboard shortcuts for navbar controls (disabled on mobile)
   useEffect(() => {
+    // Don't add keyboard listeners on mobile devices
+    if (isMobile) return;
+
     const handleKeyDown = (event: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs, textareas, or contenteditable elements
       const target = event.target as HTMLElement;
@@ -232,15 +238,17 @@ export default function Navbar({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [handleUndo, handleRedo]);
+  }, [handleUndo, handleRedo, isMobile]);
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "320px 1fr 320px",
+        gridTemplateColumns: isMobile ? "1fr auto" : "320px 1fr 320px",
       }}
-      className="bg-sidebar pointer-events-none flex h-[58px] items-center border-b border-border/80 px-2"
+      className={`bg-sidebar pointer-events-none flex items-center border-b border-border/80 px-2 ${
+        isMobile ? 'h-[48px]' : 'h-[58px]'
+      }`}
     >
       <DownloadProgressModal />
 
@@ -292,7 +300,8 @@ export default function Navbar({
           </Button>
         </div>
         
-        {/* Orientation Toggle */}
+        {/* Orientation Toggle - Hidden on mobile */}
+        {!isMobile && (
         <div className="bg-sidebar pointer-events-auto flex h-12 items-center px-1.5 border-l border-border/40">
           <Button
             onClick={hasVideos ? undefined : () => handleOrientationChange('horizontal')}
@@ -315,8 +324,10 @@ export default function Navbar({
             <Smartphone width={16} />
           </Button>
         </div>
+        )}
       </div>
 
+      {!isMobile && (
       <div className="flex h-14 items-center justify-center gap-2">
         <div className="bg-sidebar pointer-events-auto flex h-12 items-center gap-2 rounded-md px-2.5 text-muted-foreground">
           <AutosizeInput
@@ -328,25 +339,11 @@ export default function Navbar({
           />
         </div>
       </div>
+      )}
 
-      <div className="flex h-14 items-center justify-end gap-2">
+      <div className={`flex items-center justify-end gap-2 ${isMobile ? 'h-12' : 'h-14'}`}>
         <div className="bg-sidebar pointer-events-auto flex h-12 items-center gap-2 rounded-md px-2.5">
-          <Button
-            className="flex h-8 gap-1 border border-border"
-            variant="outline"
-          >
-            <ShareIcon width={18} /> Share
-          </Button>
           <DownloadPopover stateManager={stateManager} />
-          <Button
-            className="flex h-8 gap-1 border border-border"
-            variant="default"
-            onClick={() => {
-              window.open("https://discord.gg/jrZs3wZyM5", "_blank");
-            }}
-          >
-            Discord
-          </Button>
         </div>
       </div>
     </div>
@@ -357,6 +354,10 @@ const DownloadPopover = ({ stateManager }: { stateManager: StateManager }) => {
   const { actions, exportType } = useDownloadState();
   const [isExportTypeOpen, setIsExportTypeOpen] = useState(false);
   const [open, setOpen] = useState(false);
+  const { trackItemsMap } = useStore();
+
+  // Check if any videos are present in the scene
+  const hasVideos = Object.values(trackItemsMap).some(item => item.type === 'video');
 
   // Get annotation count from localStorage
   const getAnnotationCount = () => {
@@ -411,11 +412,11 @@ const DownloadPopover = ({ stateManager }: { stateManager: StateManager }) => {
             <div
               className="flex h-8 items-center rounded-sm px-3 text-sm hover:cursor-pointer hover:bg-zinc-800"
               onClick={() => {
-                actions.setExportType("mp4");
+                actions.setExportType("excel");
                 setIsExportTypeOpen(false);
               }}
             >
-              MP4
+              EXCEL
             </div>
             <div
               className="flex h-8 items-center rounded-sm px-3 text-sm hover:cursor-pointer hover:bg-zinc-800"
@@ -431,9 +432,17 @@ const DownloadPopover = ({ stateManager }: { stateManager: StateManager }) => {
 
         {exportType === "json" && (
           <div className="text-xs text-muted-foreground p-2 bg-background/20 rounded">
-            <div className="font-medium mb-1">Annotation Export</div>
+            <div className="font-medium mb-1">JSON Export</div>
             <div>📊 {annotationCount} annotation{annotationCount !== 1 ? 's' : ''} available</div>
             <div className="mt-1">Will export in VideoEvent schema format</div>
+          </div>
+        )}
+
+        {exportType === "excel" && (
+          <div className="text-xs text-muted-foreground p-2 bg-background/20 rounded">
+            <div className="font-medium mb-1">Excel Export</div>
+            <div>📊 {annotationCount} annotation{annotationCount !== 1 ? 's' : ''} available</div>
+            <div className="mt-1">Will export as CSV file for analysis in Excel or other tools</div>
           </div>
         )}
 
@@ -441,9 +450,10 @@ const DownloadPopover = ({ stateManager }: { stateManager: StateManager }) => {
           <Button 
             onClick={handleExport} 
             className="w-full"
-            disabled={exportType === "json" && annotationCount === 0}
+            disabled={(exportType === "json" && annotationCount === 0) || (exportType === "excel" && annotationCount === 0)}
+            title={annotationCount === 0 ? "No annotations available to export" : ""}
           >
-            Export {exportType === "json" ? "Annotations" : "Video"}
+            Export {exportType === "json" ? "JSON" : "Excel"}
           </Button>
         </div>
       </PopoverContent>
