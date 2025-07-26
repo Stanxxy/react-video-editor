@@ -28,10 +28,8 @@ interface AnnotationData {
   endTime: number;
   event: string;
   technique: string;
-  player1: string;
-  player2: string;
-  result1: string;
-  result2: string;
+  selectedPlayer: 'player1' | 'player2';
+  result: string;
   notes: string;
   createdAt: Date;
 }
@@ -59,15 +57,15 @@ interface DownloadState {
 }
 
 // Convert frontend annotations to VideoEvent schema
-const convertAnnotationsToVideoEvents = (annotations: AnnotationData[]): VideoEvent[] => {
+const convertAnnotationsToVideoEvents = (annotations: AnnotationData[], globalPlayerNames: { player1: string; player2: string }): VideoEvent[] => {
   return annotations.map(annotation => ({
     id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate UUID-like ID
     video_id: `video-${Date.now()}`, // Dummy video ID for now
     start_moment: Math.round(annotation.startTime), // Convert to integer milliseconds
     end_moment: Math.round(annotation.endTime), // Convert to integer milliseconds
-    player_id: annotation.player1 || annotation.player2 || "unknown", // Use first available player
+    player_id: globalPlayerNames[annotation.selectedPlayer], // Use the selected player's name
     action: `${annotation.event}: ${annotation.technique}`, // Combine event and technique
-    result: annotation.result1 || annotation.result2 || "unknown", // Use first available result
+    result: annotation.result, // Use the result for the selected player
     version: 1,
     created_at: annotation.createdAt.toISOString(),
     updated_at: annotation.createdAt.toISOString(),
@@ -99,10 +97,9 @@ const downloadExcel = (annotations: AnnotationData[], filename: string): string 
     'Clip ID', 
     'Event Type',
     'Technique',
-    'Player 1',
-    'Player 2',
-    'Result 1',
-    'Result 2',
+    'Player Name',
+    'Player Position',
+    'Result',
     'Start Time (ms)',
     'End Time (ms)',
     'Duration (s)',
@@ -110,16 +107,18 @@ const downloadExcel = (annotations: AnnotationData[], filename: string): string 
     'Created At'
   ];
   
+  // Get global player names
+  const globalPlayerNames = JSON.parse(localStorage.getItem('global-player-names') || '{"player1":"Fighter Red","player2":"Fighter Blue"}');
+  
   // Convert annotations to CSV rows
   const rows = annotations.map(annotation => [
     annotation.id,
     annotation.clipId,
     annotation.event,
     annotation.technique,
-    annotation.player1,
-    annotation.player2,
-    annotation.result1,
-    annotation.result2,
+    globalPlayerNames[annotation.selectedPlayer],
+    annotation.selectedPlayer,
+    annotation.result,
     annotation.startTime,
     annotation.endTime,
     Math.round((annotation.endTime - annotation.startTime) / 1000),
@@ -201,8 +200,9 @@ export const useDownloadState = create<DownloadState>((set, get) => ({
           set({ progress: 50 });
           await new Promise(resolve => setTimeout(resolve, 500));
           
-          // Convert to VideoEvent schema
-          const videoEvents = convertAnnotationsToVideoEvents(annotations);
+          // Get global player names and convert to VideoEvent schema
+          const globalPlayerNames = JSON.parse(localStorage.getItem('global-player-names') || '{"player1":"Fighter Red","player2":"Fighter Blue"}');
+          const videoEvents = convertAnnotationsToVideoEvents(annotations, globalPlayerNames);
           
           set({ progress: 75 });
           await new Promise(resolve => setTimeout(resolve, 500));
